@@ -55,8 +55,8 @@
 
 Add-Type -AssemblyName System.Web
 
-$ProductionUri = "https://lfg.api.identitynow.com/"
-$SandBoxUri    = "https://lfg-sb.api.identitynow.com/"
+$ProductionUri = 'INSERT URL FOR PRODUCTION TENANT HERE'
+$SandBoxUri    = 'INSERT URL FOR TEST TENANT HERE'
 
 class IdnTransformRuleBase                                      {
 
