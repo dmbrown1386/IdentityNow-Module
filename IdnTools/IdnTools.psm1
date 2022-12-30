@@ -2,14 +2,14 @@
   ___________________________________________________________________________________________________________________________________________________________________________________________________________
  |                                                                                                                                                                                                           |
  |                                                                                                                                                                                                           |
- | Title         : LfgSailPointTools.psm1                                                                                                                                                                    |
+ | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
  | Last Modified : 11/17/2022                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
- |                 help maintian LFG's SailPoint tenant.                                                                                                                                                     |
+ |                 help maintian a SailPoint tenant.                                                                                                                                                     |
  |                                                                                                                                                                                                           |
  |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
  | Version: 1.01 - Basic set of commands            | Version: 1.02 - Added support for connecting to  | Version: 1.03 - Added commands for updating      | Version: 1.04 - Fixed Inactive Search function   |
@@ -22,7 +22,7 @@
  |                 for specified user.              |                 the LFS project.                 |                 access.                          |                 Tasks and Queue items.           |
  |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.13 - Added commands for pulling Rules | Version: 1.14 - Added commands for managing      | Version: 1.15 - Updated SecurityProtocol to work | Version: 1.16 - Added commands for account       |
- |                 and password policies.           |                 password policies.               |                 on LFG servers.                  |                 history and improved search.     |
+ |                 and password policies.           |                 password policies.               |                 on my company's servers.         |                 history and improved search.     |
  |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.17 - Added command for getting a list | Version: 1.18 - Added command for updating the   | Version: 1.19 - Added commands to create Roles & | Version: 1.20 - Added commands for entitlment    |
  |                 of accounts, Identity Profiles,  |                 LifeCycle State changes and a    |                 Access Profiles, plus queries to |                 account details and direct       |
@@ -474,42 +474,7 @@ function Get-IdnInactiveUsers                                   {
         }
 
         $Uri = $BaseUri + "v2/search?limit=2500&query=%28%28attributes.cloudLifecycleState%3Aterm%2A%29%20AND%20%28roleCount%3A%3e0%29%29"
-        #Uri = $BaseUri + "v2/search?limit=2500&query=%28attributes.cloudLifecycleState%3Aterm%2A%29%"
         
-        <#
-
-        "https://lfg.api.identitynow.com/v2/search?limit=2500&query=((attributes.cloudLifecycleState:term%2A%29%20AND%20%28%40accounts%28source.name%3AUnix-Linux%29%29%29"
-        "%28%28attributes.cloudLifecycleState%3Aterm%2A%29%20AND%20%28%40accounts%28source.name%3AUnix-Linux%29%29%29"
-        "%28%28attributes.cloudLifecycleState%3Aterm%2A%29%20AND%20%28roleCount%3e%3d1%29%29"
-        "((attributes.cloudLifecycleState%3aterm*)+AND+(roleCount%3e%3d1))"
-
-        Json format for searches.  Was not working, but keeping for reference.
-
-        $Body = [ordered]@{
-
-            indices = @(
-
-                "identities"
-
-            )
-
-            query = [ordered]@{
-
-                query   = "$true"
-                fields  = @(
-
-                    "disabled"
-
-                )
-
-            }
-
-        }
-
-        $Json = ConvertTo-Json $Body -Depth 10
-        
-        #>
-
     }
 
     process {
@@ -1537,8 +1502,8 @@ function Update-IdnProvisioningPoliciesBySource                 {
 
         $BaseUri = switch ($Instance) {
 
-            "Production"   { $ProductionUri  } #'https://lfg.identitynow.com/api/accountProfile/bulkUpdate/'    }
-            "SandBox"      { $SandBoxUri     } #'https://lfg-sb.identitynow.com/api/accountProfile/bulkUpdate/' }
+            "Production"   { $ProductionUri  }
+            "SandBox"      { $SandBoxUri     }
         
         }
 
@@ -1864,7 +1829,7 @@ function New-IdnRole                                            {
         
         # Parameter for specifying the Profle owner
         [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the owner of the new Profile.  Default is the 'lfg_admin' account.")]
+        HelpMessage = "Specify the owner of the new Profile.")]
         [string]$OwnerAlias,
 
         # Parameter for specifying the Owner Type.
@@ -2248,8 +2213,8 @@ function Start-IdnIdentityRefresh                               {
         $Array  = @()
         $Uri    = switch ($Instance) {
 
-            "Production"   { "https://lfg.identitynow.com/api/system/refreshIdentities"     }
-            "SandBox"      { "https://lfg-sb.identitynow.com/api/system/refreshIdentities"  }
+            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
+            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
         
         }
 
@@ -2537,8 +2502,8 @@ function Get-IdnRules                                           {
 
         $BaseUri = switch ($Instance) {
 
-            "Production"   { "https://lfg.identitynow.com"      }
-            "SandBox"      { "https://lfg-sb.identitynow.com"   }
+            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
+            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
         
         }
         
@@ -2584,9 +2549,9 @@ function Get-IdnRule                                            {
 
         $BaseUri = switch ($Instance) {
 
-            "Production"   { "https://lfg.identitynow.com"      }
-            "SandBox"      { "https://lfg-sb.identitynow.com"   }
-        
+            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
+            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
+
         }
         
         $Uri = $BaseUri + "/api/rule/get/$RuleId"
@@ -2624,10 +2589,9 @@ function Get-IdnPasswordPolicies                                {
     begin {
 
         $BaseUri = switch ($Instance) {
+            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
+            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
 
-            "Production"   { "https://lfg.identitynow.com"      }
-            "SandBox"      { "https://lfg-sb.identitynow.com"   }
-        
         }
         
         $Uri = $BaseUri + "/api/passwordPolicy/list"
@@ -2671,10 +2635,9 @@ function Get-IdnPasswordPolicy                                  {
     begin {
 
         $BaseUri = switch ($Instance) {
+            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
+            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
 
-            "Production"   { "https://lfg.identitynow.com"      }
-            "SandBox"      { "https://lfg-sb.identitynow.com"   }
-        
         }
         
         $Uri = $BaseUri + "/api/passwordPolicy/get/$PolicyId"
@@ -2777,10 +2740,9 @@ function New-IdnPasswordPolicy                                  {
     begin {
 
         $BaseUri = switch ($Instance) {
+            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
+            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
 
-            "Production"   { "https://lfg.identitynow.com"      }
-            "SandBox"      { "https://lfg-sb.identitynow.com"   }
-        
         }
         
         $Uri = $BaseUri + "/api/passwordPolicy/create/?name=$Name"
@@ -2845,10 +2807,9 @@ function Set-IdnSourcePasswordPolicy                            {
     begin {
 
         $BaseUri = switch ($Instance) {
+            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
+            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
 
-            "Production"   { "https://lfg.identitynow.com"      }
-            "SandBox"      { "https://lfg-sb.identitynow.com"   }
-        
         }
         
         $Uri = $BaseUri + "/api/source/update/$CloudExternalIdForSource`?passwordPolicy=$PwPolicyId"
@@ -3932,8 +3893,8 @@ function New-IdnAccessProfile                                   {
 
         # Parameter for specifying the Profle owner
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the owner of the new Profile.  Default is the 'lfg_admin' account.")]
-        [string]$OwnerAlias = "lfg_admin",
+        HelpMessage = "Specify the owner of the new Profile.")]
+        [string]$OwnerAlias,
 
         # Parameter for specifying the Owner Type.
         [Parameter(Mandatory = $false,
@@ -4536,113 +4497,7 @@ function Get-IdnDynamicRoleMembership                           {
 
 }
 
-<# 
-function Start-OrigLfgSailPointConfigExport                     {
-
-    [CmdletBinding()]
-    
-    param (
-        
-        # Parameter the job Description
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a description for the Export Job.")]
-        [string]$Description,
-
-        # Parameter for types to Exclude.
-        [Parameter(Mandatory = $false,
-        
-        HelpMessage = "Select which Object Types to Include.  This Parameter takes precedence over the ExcludeTypes parameter.")]
-        [ValidateSet("SOURCE","RULE","IDENTITY_PROFILE","TRANSFORM","TRIGGER_SUBSCRIPTION")]
-        [string[]]$IncludeTypes,
-        
-        # Parameter for types to Exclude.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Select which Object Types to Exclude.  IncludeTypes takes precedent.")]
-        [ValidateSet("SOURCE","RULE","IDENTITY_PROFILE","TRANSFORM","TRIGGER_SUBSCRIPTION")]
-        [string[]]$ExcludeTypes,
-
-        # Parameter for Object Type to get additional details.
-        [Parameter(ParameterSetName = "AdditionalOptionsForConfigType",
-        Mandatory = $true,
-        HelpMessage = "Choose witch Config Type to specify additional options for.")]
-        [ValidateSet("SOURCE","RULE","IDENTITY_PROFILE","TRANSFORM","TRIGGER_SUBSCRIPTION")]
-        [string]$AdditionalOptionsForConfigType,
-
-        # Parameter for Objects to Include.
-        [Parameter(ParameterSetName = "AdditionalOptionsForConfigType",
-        Mandatory = $false,
-        HelpMessage = "Enter IDs to include for the requested Type.")]
-        [string[]]$IncludeIDs,
-        
-        # Parameter for Names to Include.
-        [Parameter(ParameterSetName = "AdditionalOptionsForConfigType",
-        Mandatory = $false,
-        HelpMessage = "Enter the Names to include for the requested Type.")]
-        [string[]]$IncludeNames,
-        
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-        
-    )
-    
-    begin {
-        
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-
-        $Uri = $BaseUri + "beta/sp-config/export"
-        
-    }
-    
-    process {
-
-        Write-Host $PSCmdlet.ParameterSetName
-
-        $Table = [ordered]@{
-
-            description     = $Description    
-            excludeTypes    = @($ExcludeTypes)
-            includeTypes    = @($IncludeTypes)
-            objectOptions   = @{}
-
-        } 
-
-        if ($AdditionalOptionsForConfigType) {
-
-            $IncludeHash = @{
-
-                includedIds     = $IncludeIDs
-                includedNames   = $IncludeNames
-
-            }
-
-            $Table.objectOptions.Add($AdditionalOptionsForConfigType , $IncludeHash)
-
-        }
-        
-        $Body = ConvertTo-Json      -InputObject    $Table -Depth   10
-        #Call = Invoke-RestMethod   -Method         "Post" -Uri     $Uri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body
-        
-    }
-    
-    end {
-
-        #return $Call
-        return $Body
-        
-    }
-
-}
-#>
-
- function Start-IdnConfigExport                         {
+function Start-IdnConfigExport                         {
 
     [CmdletBinding( DefaultParameterSetName = "Description" )]
     
