@@ -55,8 +55,13 @@
 
 Add-Type -AssemblyName System.Web
 
-$ProductionUri = 'INSERT URL FOR PRODUCTION TENANT HERE'
-$SandBoxUri    = 'INSERT URL FOR TEST TENANT HERE'
+$OrgName = "INSERT YOUR TENANT NAME HERE"
+
+$ProductionUri  = "https://" + $OrgName + ".api.identitynow.com"
+$SandBoxUri     = "https://" + $OrgName + "-sb.api.identitynow.com"
+$ProductionV1   = "https://" + $OrgName + ".identitynow.com"
+$SandBoxV1      = "https://" + $OrgName + "-sb.identitynow.com"
+
 
 class IdnTransformRuleBase                                      {
 
@@ -2210,13 +2215,14 @@ function Start-IdnIdentityRefresh                               {
     
     begin {
 
-        $Array  = @()
-        $Uri    = switch ($Instance) {
+        $Array      = @()
+        $BaseUri    = switch ($Instance) {
+            
+            "Production"   { $ProductionV1  }
+            "SandBox"      { $SandBoxV1     }
 
-            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
-            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
-        
         }
+        
 
     }
     
@@ -2501,10 +2507,10 @@ function Get-IdnRules                                           {
     begin {
 
         $BaseUri = switch ($Instance) {
+            
+            "Production"   { $ProductionV1  }
+            "SandBox"      { $SandBoxV1     }
 
-            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
-            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
-        
         }
         
         $Uri = $BaseUri + "/api/rule/list"
@@ -2548,9 +2554,9 @@ function Get-IdnRule                                            {
     begin {
 
         $BaseUri = switch ($Instance) {
-
-            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
-            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
+            
+            "Production"   { $ProductionV1  }
+            "SandBox"      { $SandBoxV1     }
 
         }
         
@@ -2589,8 +2595,9 @@ function Get-IdnPasswordPolicies                                {
     begin {
 
         $BaseUri = switch ($Instance) {
-            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
-            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
+            
+            "Production"   { $ProductionV1  }
+            "SandBox"      { $SandBoxV1     }
 
         }
         
@@ -2635,8 +2642,9 @@ function Get-IdnPasswordPolicy                                  {
     begin {
 
         $BaseUri = switch ($Instance) {
-            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
-            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
+            
+            "Production"   { $ProductionV1  }
+            "SandBox"      { $SandBoxV1     }
 
         }
         
@@ -2740,8 +2748,9 @@ function New-IdnPasswordPolicy                                  {
     begin {
 
         $BaseUri = switch ($Instance) {
-            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
-            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
+            
+            "Production"   { $ProductionV1  }
+            "SandBox"      { $SandBoxV1     }
 
         }
         
@@ -2807,8 +2816,9 @@ function Set-IdnSourcePasswordPolicy                            {
     begin {
 
         $BaseUri = switch ($Instance) {
-            "Production"   { "INSTER V1 ENDPOING URL HERE"     }
-            "SandBox"      { "INSTER V1 ENDPOING URL HERE"  }
+
+            "Production"   { $ProductionV1  }
+            "SandBox"      { $SandBoxV1     }
 
         }
         
