@@ -1,5 +1,9 @@
 # IdentityNow-Module
 
+## DISCLAIMER: This is a community tool and not an official module from SailPoint.  Use at your own risk.
+
+<br>
+
 Once you have installed this module you will need to update the variable $OrgName with the name of your Tenant.
 
 ![OrgName](/Idn-OrgName.png)
