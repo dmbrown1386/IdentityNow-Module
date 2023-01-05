@@ -19,7 +19,7 @@
  |                 single role.                     |                 members.                         |                 take multiple strings for Id.    |                 for a source.                    |
  |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.09 - Added command to refresh roles   | Version: 1.10 - Added search command to support  | Version: 1.11 - Added command to refresh a users | Version: 1.12 - Added commands for pulling Jobs, |
- |                 for specified user.              |                 the LFS project.                 |                 access.                          |                 Tasks and Queue items.           |
+ |                 for specified user.              |                 a company project.               |                 access.                          |                 Tasks and Queue items.           |
  |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.13 - Added commands for pulling Rules | Version: 1.14 - Added commands for managing      | Version: 1.15 - Updated SecurityProtocol to work | Version: 1.16 - Added commands for account       |
  |                 and password policies.           |                 password policies.               |                 on my company's servers.         |                 history and improved search.     |
@@ -31,14 +31,14 @@
  | Version: 1.21 - Updated Search options and fixed | Version: 1.22 - Added commands for updating      | Version: 1.23 - Added Source Filter to Accounts  | Version: 1.24 - Command for updating identities  |
  |                 the All Accounts query.          |                 Entitlements.                    |                 search & paging to Entitlements. |                 & added refresh options.         |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.25 - Added Search options, updates to | Version: 1.26 - Added command to pull the Event  | Version: 1.27 - Added new Search for new LFS     | Version: 1.28 - Switched New LFS User search to  |
- |                 Transform commands.              |                 History for an Identity.         |                 Azure accounts.                  |                 look at Events in SailPoint.     |
+ | Version: 1.25 - Added Search options, updates to | Version: 1.26 - Added command to pull the Event  | Version: 1.27 - Added new Search for company     | Version: 1.28 - Switched custom User search to   |
+ |                 Transform commands.              |                 History for an Identity.         |                 specific need.                   |                 look at Events in SailPoint.     |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.29 - Added command to pull Members of | Version: 1.30 - Added a V3 search for New LFS    | Version: 1.31 - Added functions to export Tenant | Version: 1.32 - Added function to move account   |
- |                 Dynamic Roles.                   |                 users.                           |                 config.                          |                 between identitiies.             |
+ | Version: 1.29 - Added command to pull Members of | Version: 1.30 - Added a V3 search for New users  | Version: 1.31 - Added functions to export Tenant | Version: 1.32 - Added function to move account   |
+ |                 Dynamic Roles.                   |                 in a specific source.            |                 config.                          |                 between identitiies.             |
  |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.33 - Added Function to get a list of  | Version: 1.34 - Added option to retrive full     | Version: 1.35 - Added function for changing      | Version: 1.36 - Added Alias Option to Search and |
- |                 Roles for an Identity.           |                 Access Profiles with Get Role.   |                 admin Roles in IdentityNow.      |                 changed LFS create search to V3. |
+ |                 Roles for an Identity.           |                 Access Profiles with Get Role.   |                 admin Roles in IdentityNow.      |                 changed a create search to V3.   |
  |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.37 - Added function for getting an    | Version: 1.38 - Added function for getting all   | Version: 1.39 - Added Search options & functions | Version: 1.40 - Added function to create a new   |
  |                 Identity Snapshot and updated    |                 identities.                      |                 to run account aggregations      |                 LifeCycle State and list all for |
