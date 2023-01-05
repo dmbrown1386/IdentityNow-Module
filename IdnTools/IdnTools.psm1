@@ -5,11 +5,11 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 11/17/2022                                                                                                                                                                                |
+ | Last Modified : 01/05/2023                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
- |                 help maintian a SailPoint tenant.                                                                                                                                                     |
+ |                 help maintian a SailPoint tenant.                                                                                                                                                         |
  |                                                                                                                                                                                                           |
  |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
  | Version: 1.01 - Basic set of commands            | Version: 1.02 - Added support for connecting to  | Version: 1.03 - Added commands for updating      | Version: 1.04 - Fixed Inactive Search function   |
@@ -44,16 +44,20 @@
  |                 Identity Snapshot and updated    |                 identities.                      |                 to run account aggregations      |                 LifeCycle State and list all for |
  |                 search with LAN ID.              |                                                  |                                                  |                 a source.                        |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.41 - Added V3 function to run a       | Version: 1.42 - Updated Provioning Policy cmd to |                                                  |                                                  |
- |                 custom search.                   |                 target a Usage Type.             |                                                  |                                                  |
+ | Version: 1.41 - Added V3 function to run a       | Version: 1.42 - Updated Provioning Policy cmd to | Version: 1.43 - Added function to reset source.  | Version: 1.44 - Add functions to Pull Cluster &  |
+ |                 custom search.                   |                 target a Usage Type.             |                                                  |                 VA/Client details.               |
+ |                                                  |                                                  |                                                  |                                                  |
+ | Version: 1.45 - Added Classes & Functions for    | Version: 1.46 - Added additional Class methods.  | Version: 1.47 - Added Classes and Functions for  |                                                  |
+ |                 updating Transforms and Identity |                                                  |                 adding and removing Access       |                                                  |
+ |                 attributes.                      |                                                  |                 Profiles to or from Roles.       |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
 #>
 
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-Add-Type -AssemblyName System.Web
+# Add-Type -AssemblyName System.Web
 
 $OrgName = "INSERT YOUR TENANT NAME HERE"
 
@@ -85,6 +89,26 @@ class IdnIdentityAttributePatchNewLogic                         {
 
     }
 
+}
+
+class IdnAddEntitlmentToRole                                    {
+
+    [string     ]$op    = "add"
+    [string     ]$path  = "/accessProfiles/-"
+    [hashtable  ]$value = @{
+        
+        id      = ""
+        type    = "ACCESS_PROFILE"
+
+    }
+
+}
+
+class IdnRemoveEntitlmentFromRole                               {
+
+    [string]$op         = "remove"
+    [string]$path       = "/accessProfiles/"
+    
 }
 
 class AccountAttributeRule  : IdnTransformRuleBase              {
@@ -201,196 +225,6 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
     
 }
 
-function Initialize-IdnTransformRule                            {
-
-    [CmdletBinding()]
-    
-    param   (
-
-        [Parameter( ParameterSetName = 'AccountAttributeRule'   , Mandatory = $false )][Switch]$AccountAttributeRule    ,
-        [Parameter( ParameterSetName = 'FirstValidRule'         , Mandatory = $false )][Switch]$FirstValidRule          ,
-        [Parameter( ParameterSetName = 'LookupRule'             , Mandatory = $false )][Switch]$LookupRule              ,
-
-        # Parameter for the Rule Name
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a name for the new Transform Rule.")]
-        [string]$RuleName,
-
-        # Parameter for the Source ID.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $true,
-        HelpMessage = "Enter the Long ID for the Source.")]
-        [ValidateLength(32,32)]
-        [string]$LongSourceID,
-
-        # Parameter for the Attribute Name.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $true,
-        HelpMessage = "Enter the name of the Account Attribute to retrieve.")]
-        [string]$AccountAttibuteName,
-        
-        # Parameter for the Account Property Filter.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Enter the Account Property Filter Criteria.")]
-        [string]$AccountPropertyFilter,
-        
-        # Parameter for the Account Filter.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Enter the Filter Criteria.")]
-        [string]$AccountFilter,
-
-        # Parameter for the Sort Attribute.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Enter the Account Attribute to sort by.")]
-        [string]$SortAttribute,
-
-        # Switch for the returning first link only.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Switch to return only the first account.")]
-        [switch]$ReturnFirstOnly,
-
-        # Switch for the Sort Attribute.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Switch to set the sort order to Descending.")]
-        [switch]$EnableDescendingSort
-
-    )
-    
-    begin   {
-
-        $Type = $PSCmdlet.ParameterSetName
-        $Rule = New-Object -TypeName $Type
-        
-    }
-    
-    process {
-
-        switch ($Type) {
-
-            "AccountAttributeRule"  { $Rule.SetRequiredAttributes( $LongSourceID , $RuleName , $AccountAttibuteName ) }              
-            "FirstValidRule"        { $Rule.SetRequiredAttributes( $RuleName                                        ) }
-            "LookupRule"            { $Rule.SetRequiredAttributes( $RuleName                                        ) }
-        
-        }
-
-        switch ($PSBoundParameters.Keys) {
-
-            "AccountFilter"         { $Rule.SetAccountFilter(           $AccountFilter          ) }     
-            "AccountPropertyFilter" { $Rule.SetAccountPropertyFilter(   $AccountPropertyFilter  ) }  
-            "SortAttribute"         { $Rule.SetSortProperty(            $SortAttribute          ) }
-            "ReturnFirstOnly"       { $Rule.EnableReturnFirstLink(                              ) }
-            "EnableDescendingSort"  { $Rule.EnableDescendingSort(                               ) }
-
-        }
-        
-    }
-    
-    end     {
-
-        return $Rule
-        
-    }
-
-}
-
-function Initialize-IdnIdentityAttribute                        {
-
-    [CmdletBinding()]
-
-    param   (
-
-        [Parameter( ParameterSetName = 'ReferencePatch'         , Mandatory = $false )][Switch]$ReferencePatch          ,
-        [Parameter( ParameterSetName = 'ReferencePatchAdd'      , Mandatory = $false )][Switch]$ReferencePatchAdd       ,
-        [Parameter( ParameterSetName = 'ReferencePatchReplace'  , Mandatory = $false )][Switch]$ReferencePatchReplace   ,
-        [Parameter( ParameterSetName = 'AccountAttributePatch'  , Mandatory = $false )][Switch]$AccountAttributePatch   ,
-        
-        <# # Paramter for the Patch Operation.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Select the Operation for this Patch to perform.")]
-        [ValidateSet( "add" , "remove" , "replace" , "move" , "copy" , "test" )]
-        [string]$PatchOperation, #>
-
-        # Parameter for insert position
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the index of the Idenity Attribute.  For Adds the new attribute will be inserted above the item at this Index.")]
-        [int32]$Index,
-        
-        # Parameter for the Transform Name
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the Identity attribute this is for.")]
-        [string]$IdentityAttribute,
-
-        # Parameter for Source ID
-        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
-        Mandatory = $true,
-        HelpMessage = "Enter the Source ID to pull the attribute from.")]
-        [string]$SourceLongID,
-
-        # Parameter Source Name
-        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
-        Mandatory = $true,
-        HelpMessage = "Enter the Name of the Source Name.")]
-        [string]$SourceName,
-
-        # Parameter Source Attribute
-        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
-        Mandatory = $true,
-        HelpMessage = "Enter the Attribute Name to pull from the Source.")]
-        [string]$SourceAttribute,
-
-        # Parameter for the Transform Name
-        [Parameter(ParameterSetName = "ReferencePatch",
-        Mandatory = $true,
-        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
-        [Parameter(ParameterSetName = "ReferencePatchReplace",
-        Mandatory = $true,
-        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
-        [string]$TransformRuleToApply
-
-    )
-
-    begin   {
-
-        $Type   = $PSCmdlet.ParameterSetName
-        $Patch  = New-Object -TypeName $Type
-
-    }
-
-    process {
-
-        <# switch ($Type) {
-
-            "ReferencePatch"        { $Patch.ProvideRequiredProperties($PatchOperation , $Index , $TransformRuleToApply , $IdentityAttribute                                        )   }
-            "AccountAttributePatch" { $Patch.ProvideRequiredProperties( $PatchOperation, $Index , $IdentityAttribute    , $SourceLongID         , $SourceName , $SourceAttribute    )   }
-            Default                 { Write-Warning "$Type has not been configured yet." ; $Patch = $null                                                                               }
-        
-        } #>
-
-        switch ($Type) {
-
-            "ReferencePatchAdd"     { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute                                                            )   }
-            "AccountAttributePatch" { $Patch.ProvideRequiredProperties( $Index , $IdentityAttribute     , $SourceLongID         , $SourceName , $SourceAttribute                        )   }
-            "ReferencePatch"        { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute    , $SourceName , $SourceLongID       , $SourceAttribute  )   }
-            "ReferencePatchReplace" { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute    , $SourceName , $SourceLongID       , $SourceAttribute  )   }
-            Default                 { Write-Warning "$Type has not been configured yet." ; $Patch = $null                                                                                   }
-        
-        }
-
-    }
-
-    end     {
-
-        return $Patch
-
-    }
-
-}
-
 function Get-IdnToken                                           {
 
     [CmdletBinding()]
@@ -449,7 +283,7 @@ function Get-IdnToken                                           {
 
     end {
 
-        return New-Variable -Name "IdentityNowToken" -Value $Bearer -Scope "Global" -Option "ReadOnly"
+        return New-Variable -Name "IdentityNowToken" -Value $Bearer -Scope "Global" -Option "ReadOnly" -Force
 
     }
 
@@ -1368,7 +1202,7 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1388,7 +1222,7 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
     )
 
-    begin {
+    begin   {
 
         $BaseUri = switch ($Instance) {
 
@@ -1407,7 +1241,7 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
     }
 
-    end {
+    end     {
 
         return $Call
 
@@ -4200,7 +4034,6 @@ function Get-IdnAccountEntitlements                             {
 
 }
 
-# Not currently in a working state, has been commented out of the manifest.
 function Search-IdnIdentitiesV3                                 {
 
     [CmdletBinding()]
@@ -4226,7 +4059,7 @@ function Search-IdnIdentitiesV3                                 {
 
     )
 
-    begin {
+    begin   {
 
         $BaseUri = switch ($Instance) {
 
@@ -4285,7 +4118,7 @@ function Search-IdnIdentitiesV3                                 {
         
     }
 
-    end {     
+    end     {     
 
         return $ResultStore
         # return $Call.Content | ConvertFrom-Json
@@ -4507,7 +4340,7 @@ function Get-IdnDynamicRoleMembership                           {
 
 }
 
-function Start-IdnConfigExport                         {
+function Start-IdnConfigExport                                  {
 
     [CmdletBinding( DefaultParameterSetName = "Description" )]
     
@@ -5135,6 +4968,318 @@ function Get-IdnManagedClientStatus                             {
     process {
 
         $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+
+    }
+
+    end     {
+
+        return $Call
+
+    }
+
+}
+
+function Initialize-IdnTransformRule                            {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        [Parameter( ParameterSetName = 'AccountAttributeRule'   , Mandatory = $false )][Switch]$AccountAttributeRule    ,
+        [Parameter( ParameterSetName = 'FirstValidRule'         , Mandatory = $false )][Switch]$FirstValidRule          ,
+        [Parameter( ParameterSetName = 'LookupRule'             , Mandatory = $false )][Switch]$LookupRule              ,
+
+        # Parameter for the Rule Name
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a name for the new Transform Rule.")]
+        [string]$RuleName,
+
+        # Parameter for the Source ID.
+        [Parameter(ParameterSetName = "AccountAttributeRule",
+        Mandatory = $true,
+        HelpMessage = "Enter the Long ID for the Source.")]
+        [ValidateLength(32,32)]
+        [string]$LongSourceID,
+
+        # Parameter for the Attribute Name.
+        [Parameter(ParameterSetName = "AccountAttributeRule",
+        Mandatory = $true,
+        HelpMessage = "Enter the name of the Account Attribute to retrieve.")]
+        [string]$AccountAttibuteName,
+        
+        # Parameter for the Account Property Filter.
+        [Parameter(ParameterSetName = "AccountAttributeRule",
+        Mandatory = $false,
+        HelpMessage = "Enter the Account Property Filter Criteria.")]
+        [string]$AccountPropertyFilter,
+        
+        # Parameter for the Account Filter.
+        [Parameter(ParameterSetName = "AccountAttributeRule",
+        Mandatory = $false,
+        HelpMessage = "Enter the Filter Criteria.")]
+        [string]$AccountFilter,
+
+        # Parameter for the Sort Attribute.
+        [Parameter(ParameterSetName = "AccountAttributeRule",
+        Mandatory = $false,
+        HelpMessage = "Enter the Account Attribute to sort by.")]
+        [string]$SortAttribute,
+
+        # Switch for the returning first link only.
+        [Parameter(ParameterSetName = "AccountAttributeRule",
+        Mandatory = $false,
+        HelpMessage = "Switch to return only the first account.")]
+        [switch]$ReturnFirstOnly,
+
+        # Switch for the Sort Attribute.
+        [Parameter(ParameterSetName = "AccountAttributeRule",
+        Mandatory = $false,
+        HelpMessage = "Switch to set the sort order to Descending.")]
+        [switch]$EnableDescendingSort
+
+    )
+    
+    begin   {
+
+        $Type = $PSCmdlet.ParameterSetName
+        $Rule = New-Object -TypeName $Type
+        
+    }
+    
+    process {
+
+        switch ($Type) {
+
+            "AccountAttributeRule"  { $Rule.SetRequiredAttributes( $LongSourceID , $RuleName , $AccountAttibuteName ) }              
+            "FirstValidRule"        { $Rule.SetRequiredAttributes( $RuleName                                        ) }
+            "LookupRule"            { $Rule.SetRequiredAttributes( $RuleName                                        ) }
+        
+        }
+
+        switch ($PSBoundParameters.Keys) {
+
+            "AccountFilter"         { $Rule.SetAccountFilter(           $AccountFilter          ) }     
+            "AccountPropertyFilter" { $Rule.SetAccountPropertyFilter(   $AccountPropertyFilter  ) }  
+            "SortAttribute"         { $Rule.SetSortProperty(            $SortAttribute          ) }
+            "ReturnFirstOnly"       { $Rule.EnableReturnFirstLink(                              ) }
+            "EnableDescendingSort"  { $Rule.EnableDescendingSort(                               ) }
+
+        }
+        
+    }
+    
+    end     {
+
+        return $Rule
+        
+    }
+
+}
+
+function Initialize-IdnIdentityAttribute                        {
+
+    [CmdletBinding()]
+
+    param   (
+
+        [Parameter( ParameterSetName = 'ReferencePatch'         , Mandatory = $false )][Switch]$ReferencePatch          ,
+        [Parameter( ParameterSetName = 'ReferencePatchAdd'      , Mandatory = $false )][Switch]$ReferencePatchAdd       ,
+        [Parameter( ParameterSetName = 'ReferencePatchReplace'  , Mandatory = $false )][Switch]$ReferencePatchReplace   ,
+        [Parameter( ParameterSetName = 'AccountAttributePatch'  , Mandatory = $false )][Switch]$AccountAttributePatch   ,
+     
+        # Parameter for insert position
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the index of the Idenity Attribute.  For Adds the new attribute will be inserted above the item at this Index.")]
+        [int32]$Index,
+        
+        # Parameter for the Transform Name
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Identity attribute this is for.")]
+        [string]$IdentityAttribute,
+
+        # Parameter for Source ID
+        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
+        Mandatory = $true,
+        HelpMessage = "Enter the Source ID to pull the attribute from.")]
+        [string]$SourceLongID,
+
+        # Parameter Source Name
+        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
+        Mandatory = $true,
+        HelpMessage = "Enter the Name of the Source Name.")]
+        [string]$SourceName,
+
+        # Parameter Source Attribute
+        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
+        Mandatory = $true,
+        HelpMessage = "Enter the Attribute Name to pull from the Source.")]
+        [string]$SourceAttribute,
+
+        # Parameter for the Transform Name
+        [Parameter(ParameterSetName = "ReferencePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
+        [Parameter(ParameterSetName = "ReferencePatchReplace",
+        Mandatory = $true,
+        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
+        [string]$TransformRuleToApply
+
+    )
+
+    begin   {
+
+        $Type   = $PSCmdlet.ParameterSetName
+        $Patch  = New-Object -TypeName $Type
+
+    }
+
+    process {
+
+        switch ($Type) {
+
+            "ReferencePatchAdd"     { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute                                                            )   }
+            "AccountAttributePatch" { $Patch.ProvideRequiredProperties( $Index , $IdentityAttribute     , $SourceLongID         , $SourceName , $SourceAttribute                        )   }
+            "ReferencePatch"        { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute    , $SourceName , $SourceLongID       , $SourceAttribute  )   }
+            "ReferencePatchReplace" { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute    , $SourceName , $SourceLongID       , $SourceAttribute  )   }
+            Default                 { Write-Warning "$Type has not been configured yet." ; $Patch = $null                                                                                   }
+        
+        }
+
+    }
+
+    end     {
+
+        return $Patch
+
+    }
+
+}
+
+function Add-IdnAccessProfileToRole                             {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for entering the ID of the Role
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Role you're looking for.")]
+        [ValidateLength(32,32)]
+        [string]$RoleLongID,
+
+        # Parameter for AP ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Access Profile to Add.")]
+        [ValidateLength(32,32)]
+        [string]$AccessProfileLongID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+
+    begin   {
+
+        $BaseUri    = switch ($Instance) {
+
+            "Production"   { $ProductionUri    }
+            "SandBox"      { $SandBoxUri       }
+        
+        }
+
+    }
+
+    process {
+
+        $Access = Get-IdnAccessProfile -Token $Token -Id $AccessProfileLongID -Instance $Instance -ErrorAction "Stop"
+        
+        if ($Access) {
+
+            $Array           = @()
+            $Patch           = New-Object -TypeName "IdnAddEntitlmentToRole"
+            $Uri             = $BaseUri + "beta/roles/" + $RoleLongID
+            $Patch.value.id  = $Access.id
+            $Array          += $Patch
+
+            $Body = ConvertTo-Json      -InputObject    $Array  -Depth  10
+            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json-patch+json"
+
+        }
+
+    }
+
+    end     {
+
+        return $Call
+
+    }
+
+}
+
+function Remove-IdnAccessProfileFromRole                        {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for entering the ID of the Role
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Role you're looking for.")]
+        [ValidateLength(32,32)]
+        [string]$RoleLongID,
+
+        # Switch to remove First entry.
+        [Parameter(ParameterSetName = "First",
+        Mandatory = $true)]
+        [switch]$RemoveFirst,
+
+        # Switch to remove First entry.
+        [Parameter(ParameterSetName = "Last",
+        Mandatory = $true)]
+        [switch]$RemoveLast,
+
+        # Parameter for specifing the Index
+        [Parameter(ParameterSetName = "Index",
+        Mandatory = $true)]
+        [ValidateScript({(if ($_ -ge 1) {$true} else {throw "The number provided must be greater than or equal to 1.  Use the RemoveLast or RemoveFirst Switches to remove the first or last entry."})})]
+        [int32]$Index,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+
+    begin   {
+
+        $Remove     = New-Object -TypeName "IdnRemoveEntitlmentFromRole"
+        $BaseUri    = switch ($Instance) {
+
+            "Production"   { $ProductionUri    }
+            "SandBox"      { $SandBoxUri       }
+        
+        }
+
+    }
+
+    process {
+
+        $Uri            = $BaseUri + "beta/roles/" + $RoleLongID
+        $Remove.path   += switch ($PSCmdlet.ParameterSetName) {
+
+            "Last"      { "-"       }
+            "First"     { "0"       }
+            Default     { $Index    }
+
+        }
+    
+        $Body = ConvertTo-Json      -InputObject    @($Remove)  -Depth  10
+        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json-patch+json"
 
     }
 
