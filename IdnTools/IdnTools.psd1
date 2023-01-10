@@ -30,7 +30,7 @@
     Copyright = '(c) 2021 Derek Brown. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = "This module contains functions to help manage SailPoint IdentityNow tenants.  The functions use various versions of SailPoint's APIs.  
+    Description = "This module contains functions to help manage SailPoint IdentityNow tenants.  The functions use various versions of SailPoint's APIs.  `
     The only change required is updating the 'OrgName' variable in the .psm1 file with your tenant name."
 
     # Minimum version of the Windows PowerShell engine required by this module
