@@ -59,12 +59,12 @@
 
 # Add-Type -AssemblyName System.Web
 
-$OrgName = "INSERT YOUR TENANT NAME HERE"
+$OrgName = "lfg"
 
-$ProductionUri  = "https://" + $OrgName + ".api.identitynow.com"
-$SandBoxUri     = "https://" + $OrgName + "-sb.api.identitynow.com"
-$ProductionV1   = "https://" + $OrgName + ".identitynow.com"
-$SandBoxV1      = "https://" + $OrgName + "-sb.identitynow.com"
+$ProductionUri  = "https://" + $OrgName + ".api.identitynow.com/"
+$SandBoxUri     = "https://" + $OrgName + "-sb.api.identitynow.com/"
+$ProductionV1   = "https://" + $OrgName + ".identitynow.com/"
+$SandBoxV1      = "https://" + $OrgName + "-sb.identitynow.com/"
 
 
 class IdnTransformRuleBase                                      {
@@ -2057,7 +2057,7 @@ function Start-IdnIdentityRefresh                               {
 
         }
         
-        $Uri = $BaseUri + "/api/system/refreshIdentities"
+        $Uri = $BaseUri + "api/system/refreshIdentities"
 
     }
     
