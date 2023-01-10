@@ -2057,6 +2057,7 @@ function Start-IdnIdentityRefresh                               {
 
         }
         
+        $Uri = $BaseUri + "/api/system/refreshIdentities"
 
     }
     
