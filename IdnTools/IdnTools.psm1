@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 01/05/2023                                                                                                                                                                                |
+ | Last Modified : 01/11/2023                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -47,8 +47,8 @@
  | Version: 1.41 - Added V3 function to run a       | Version: 1.42 - Updated Provioning Policy cmd to | Version: 1.43 - Added function to reset source.  | Version: 1.44 - Add functions to Pull Cluster &  |
  |                 custom search.                   |                 target a Usage Type.             |                                                  |                 VA/Client details.               |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.45 - Added Classes & Functions for    | Version: 1.46 - Added additional Class methods.  | Version: 1.47 - Added Classes and Functions for  |                                                  |
- |                 updating Transforms and Identity |                                                  |                 adding and removing Access       |                                                  |
+ | Version: 1.45 - Added Classes & Functions for    | Version: 1.46 - Added additional Class methods.  | Version: 1.47 - Added Classes and Functions for  | Version: 1.48 - Removed V2 Search and fixed      |
+ |                 updating Transforms and Identity |                                                  |                 adding and removing Access       |                 pagenation issues with PS 7.     |
  |                 attributes.                      |                                                  |                 Profiles to or from Roles.       |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
@@ -331,11 +331,11 @@ function Get-IdnInactiveUsers                                   {
 
 }
 
-function Search-IdnIdentities                                   {
+<# function Search-IdnIdentities                                   {
 
-    [CmdletBinding()]
+    [CmdletBinding( DefaultParameterSetName = "Bulk" )]
 
-    param (
+    param   (
 
         # Parameter help description
         [Parameter(ParameterSetName = "Alias",
@@ -499,13 +499,13 @@ function Search-IdnIdentities                                   {
 
     }
 
-}
+} #>
 
 function Get-IdnAccounts                                        {
 
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for specifying a Source to search for accounts in
         [Parameter(Mandatory = $false,
@@ -537,7 +537,7 @@ function Get-IdnAccounts                                        {
 
     )
 
-    begin {
+    begin   {
 
         $BaseUri = switch ($Instance) {
 
@@ -568,7 +568,7 @@ function Get-IdnAccounts                                        {
                 $Uri    = $BaseUri + "offset=$Offset&count=true"
                 $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ErrorAction "Stop" 
                 $Call  += $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
-                $Total  = $Rest.Headers.'X-Total-Count'
+                $Total  = [int32]"$($Rest.Headers.'X-Total-Count')"
                 $PgTtl  = [Math]::Ceiling($Total / $OffsetIncrease)
                 $Page++
                 Write-Progress -Activity "Page $Page of $PgTtl" -Status "Accounts $($Call.Count) of $Total" -PercentComplete ($Call.Count/$Total*100) -CurrentOperation $Uri
@@ -587,7 +587,7 @@ function Get-IdnAccounts                                        {
 
     }
 
-    end {
+    end     {
 
         return $Call
 
@@ -4035,9 +4035,9 @@ function Get-IdnAccountEntitlements                             {
 
 }
 
-function Search-IdnIdentitiesV3                                 {
+function Search-IdnIdentities                                   {
 
-    [CmdletBinding()]
+    [CmdletBinding( DefaultParameterSetName = "Bulk" )]
 
     param (
 
@@ -4048,9 +4048,91 @@ function Search-IdnIdentitiesV3                                 {
         [string]$Index,
 
         # Parameter for inserting the query.
-        [Parameter(Mandatory = $true,
+        [Parameter(ParameterSetName = "Query",
+        Mandatory = $true,
         HelpMessage = "Enter the query to submit.")]
         [string]$Query,
+
+        # Parameter help description
+        [Parameter(ParameterSetName = "Alias",
+        Mandatory = $true,
+        HelpMessage = "Enter the Alias of the Identity to search for.")]
+        [string]$Alias,
+
+        # Parameter for specifying first name to search.
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false)]
+        [Parameter(ParameterSetName = "Firstname",
+        Mandatory = $true,
+        HelpMessage = "Enter the First Name to search for here.")]
+        [Parameter(ParameterSetName = "Lastname",
+        Mandatory = $false,
+        HelpMessage = "Enter the First Name to search for here.")]
+        [string]$FirstName,
+
+        # Parameter for specifying last name to search.
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false)]
+        [Parameter(ParameterSetName = "Firstname",
+        Mandatory = $false,
+        HelpMessage = "Enter the First Name to search for here.")]        
+        [Parameter(ParameterSetName = "Lastname",
+        Mandatory = $true,
+        HelpMessage = "Enter the First Name to search for here.")]
+        [string]$LastName,
+
+        # Parameter for specifying the emailladdress to search for.
+        [Parameter(ParameterSetName = "Email",
+        Mandatory = $true,
+        HelpMessage = "Enter the email address to search for here.")]
+        [string]$EmailAddress,
+
+        # Parameter for specifying the domain to search.
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Enter the domain to search for here.")]
+        [Parameter(ParameterSetName = "Domain",
+        Mandatory = $true,
+        HelpMessage = "Enter the domain to search for here.")]
+        [ValidateScript( { ( if ($_ -notlike "*@*" ) { $true } else { throw "$_ contains an '@' symbol.  This is included in the query and cannot be part of the value passed." } ) } ) ]
+        [string]$EmailDomain,
+        
+        # Parameter for specifying Life Cycle State.
+        [Parameter(ParameterSetName = "State",
+        Mandatory = $true,
+        HelpMessage = "Select the Life Cycle State to Search for.")]
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Select the Life Cycle State to Search for.")]
+        [ValidateSet("Active","Terminated","Terminated2","Terminated3","Pending","LOA")]
+        [string]$LifeCycleState,
+
+        # Parameter for the name of a Source
+        [Parameter(ParameterSetName = "Sourcename",
+        Mandatory = $true,
+        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
+        [string]$SourceName,
+
+        # Parameter for the Source Long ID.
+        [Parameter(ParameterSetName = "SourceID",
+        Mandatory = $true,
+        HelpMessage = "Specify the Long ID for the Source.")]
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Specify the Long ID for the Source.")]
+        [string]$LongSourceID,
+
+        # Parameter for the number of hours.
+        [Parameter(ParameterSetName = "Hours",
+        Mandatory = $true,
+        HelpMessage = "Specify the number hours to search Account creations for.")]
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Specify the number hours to search Account creations for.")]
+        [int32]$Hours,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -4069,53 +4151,60 @@ function Search-IdnIdentitiesV3                                 {
         
         }
 
-        $Uri = $BaseUri + "v3/search?count=true"
+        $Uri            = $BaseUri + "v3/search?count=true&from=0"
+        $SearchStrings  = @()
+        $ResultStore    = @()
     
     }
 
     process {
 
+        switch ($PSBoundParameters.Keys) {
+
+            'Query'                 { $SearchStrings += $Query                                                                  }
+            'Alias'                 { $SearchStrings += 'identity_all:'                     + $Alias                            } 
+            'LastName'              { $SearchStrings += '(attributes.lastname:"'            + $LastName         + '")'          } 
+            'FirstName'             { $SearchStrings += '(attributes.firstname:"'           + $FirstName        + '")'          } 
+            'EmailAddress'          { $SearchStrings += '(attributes.email:"'               + $EmailAddress     + '")'          }
+            'EmailDomain'           { $SearchStrings += '(attributes.email:"'               + $EmailDomain      + '*@")'        }
+            'LifeCycleState'        { $SearchStrings += '(attributes.cloudLifecycleState:"' + $LifeCycleState   + '")'          }
+            'SourceName'            { $SearchStrings += '@accounts(source.name:"'           + $SourceName       + '")'          }
+            'LongSourceID'          { $SearchStrings += '@accounts(source.id:"'             + $LongSourceID     + '")'          }
+            'Hours'                 { $SearchStrings += '(created:[now-'                    + $Hours            + 'h TO now])'  }
+            
+        }
+
+        $Search = $SearchStrings -join " AND "
+
         $Object = @{
 
-            indices = @(
+            indices     = @(
 
                 $Index
 
             )
 
-            query = @{
+            query       = @{
 
-                query = $Query
+                query = $Search
 
             }
 
+            sort        = @("+id")
+            searchAfter = @()
+
         }
 
-        $ResultStore    = @()
-        $Body           = ConvertTo-Json    -InputObject    $Object -Depth  10
-        $Call           = Invoke-WebRequest -Method         "Post"  -Uri    $Uri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body
-        $RetryCount     = [math]::Round($Call.Headers.'X-Total-Count' / 250)
-        $ResultStore   += $Call.Content | ConvertFrom-Json
+        do {
+
+            $Body                = ConvertTo-Json -InputObject $Object -Depth  10
+            $Call                = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body 
+            $Numb                = [int32]"$($Call.Headers.Item("X-Total-Count"))"
+            $ResultStore        += $Call.Content | ConvertFrom-Json
+            $Object.searchAfter  = @( $ResultStore | Select-Object -Last 1 -ExpandProperty "id" )
+            Write-Progress -Activity "Searching $Index." -Status "$($ResultStore.Count) of $Numb." -PercentComplete ( $ResultStore.Count / $Numb * 100 ) -CurrentOperation $CallUri
         
-        if ($RetryCount -gt 1) {
-
-            $Offset = 250
-            $Total  = $RetryCount
-            
-            while ($RetryCount -gt 0) {
-
-                $OffsetUri = "$($Uri)&offset=$($Offset)"
-
-                Write-Progress -Activity "Running Search" -Status "$RetryCount of $Total" -PercentComplete ( $RetryCount / $Total * 100) -CurrentOperation $OffsetUri
-                
-                $LoopCall        = Invoke-WebRequest -Method "Post" -Uri $OffsetUri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body
-                $Offset         += 250
-                $ResultStore    += $LoopCall.Content | ConvertFrom-Json
-                $RetryCount     -= 1
-    
-            }
-
-        }
+        } until ( $Numb -le $ResultStore.Count )
         
     }
 
