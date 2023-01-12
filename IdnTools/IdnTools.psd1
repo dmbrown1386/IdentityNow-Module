@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.47'
+    ModuleVersion = '1.48'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -109,7 +109,6 @@
         "Get-IdnIdentityProfile"                        ,
         "Get-IdnLifeCycleStates"                        ,
         "Get-IdnManagedClusters"                        ,
-        "Search-IdnIdentitiesV3"                        ,
         "Get-IdnAccessProfiles"                         ,
         "Get-IdnAccountDetails"                         ,
         "Get-IdnAccountHistory"                         ,
@@ -178,7 +177,13 @@
         PSData = @{
 
             # Tags applied to this module. These help with module discovery in online galleries.
-            # Tags = @()
+            Tags = @(
+
+                "IdentityNow"   ,
+                "SailPoint"     ,
+                "API"
+
+            )
 
             # A URL to the license for this module.
             # LicenseUri = ''
@@ -203,4 +208,3 @@
     # DefaultCommandPrefix = ''
 
 }
-
