@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.48'
+    ModuleVersion = '1.49'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -58,7 +58,11 @@
     # RequiredAssemblies = @()
 
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
-    # ScriptsToProcess = @()
+    ScriptsToProcess = @(
+
+        "IdnSetOrgNames.ps1"
+
+    )
 
     # Type files (.ps1xml) to be loaded when importing this module
     # TypesToProcess = @()

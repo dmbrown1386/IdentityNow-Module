@@ -51,21 +51,25 @@
  |                 updating Transforms and Identity |                                                  |                 adding and removing Access       |                 pagenation issues with PS 7.     |
  |                 attributes.                      |                                                  |                 Profiles to or from Roles.       |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
+ | Version: 1.49 - Added script to set Org names    |                                                  |                                                  |                                                  |
+ |                 as Environtmental Variables.     |                                                  |                                                  |                                                  |
+ |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
 #>
 
-# [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$ProductionUri  = "https://" + $env:IdnProductionOrgName    + ".api.identitynow.com/"
+$SandBoxUri     = "https://" + $env:IdnSandboxOrgName       + "-sb.api.identitynow.com/"
+$ProductionV1   = "https://" + $env:IdnProductionOrgName    + ".identitynow.com/"
+$SandBoxV1      = "https://" + $env:IdnSandboxOrgName       + "-sb.identitynow.com/"
 
-# Add-Type -AssemblyName System.Web
+<#
+  __________________
+ |                  |
+ | START OF CLASSES |
+ |__________________|
 
-$OrgName = "lfg"
-
-$ProductionUri  = "https://" + $OrgName + ".api.identitynow.com/"
-$SandBoxUri     = "https://" + $OrgName + "-sb.api.identitynow.com/"
-$ProductionV1   = "https://" + $OrgName + ".identitynow.com/"
-$SandBoxV1      = "https://" + $OrgName + "-sb.identitynow.com/"
-
+#>
 
 class IdnTransformRuleBase                                      {
 
@@ -224,6 +228,38 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
     }
     
 }
+
+<#
+  ________________
+ |                |
+ | END OF CLASSES |
+ |________________|
+
+#>
+
+<#
+  ____________________________
+ |                            |
+ | START OF PRIVATE FUNCTIONS |
+ |____________________________|
+
+#>
+
+<#
+  __________________________
+ |                          |
+ | END OF PRIVATE FUNCTIONS |
+ |__________________________|
+
+#>
+
+<#
+  ___________________________
+ |                           |
+ | START OF PUBLIC FUNCTIONS |
+ |___________________________|
+
+#>
 
 function Get-IdnToken                                           {
 
@@ -5380,3 +5416,11 @@ function Remove-IdnAccessProfileFromRole                        {
     }
 
 }
+
+<#
+  _________________________
+ |                         |
+ | END OF PUBLIC FUNCTIONS |
+ |_________________________|
+
+#>
