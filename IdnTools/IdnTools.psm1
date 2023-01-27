@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 01/11/2023                                                                                                                                                                                |
+ | Last Modified : 01/27/2023                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -51,8 +51,8 @@
  |                 updating Transforms and Identity |                                                  |                 adding and removing Access       |                 pagenation issues with PS 7.     |
  |                 attributes.                      |                                                  |                 Profiles to or from Roles.       |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.49 - Added script to set Org names    |                                                  |                                                  |                                                  |
- |                 as Environtmental Variables.     |                                                  |                                                  |                                                  |
+ | Version: 1.49 - Added script to set Org names    | Version: 1.50 - Added Private function to get    |                                                  |                                                  |
+ |                 as Environtmental Variables.     |                 Tenant details.                  |                                                  |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -70,6 +70,22 @@ $SandBoxV1      = "https://" + $env:IdnSandboxOrgName       + "-sb.identitynow.c
  |__________________|
 
 #>
+
+class IdnConnectionDetails                                      {
+
+    [string]$ModernBaseUri
+    [string]$LegacyBaseUri
+    [object]$TenantToken
+
+    [void]CreateConfig( [string]$MURI , [string]$LURI , [object]$Bear ) {
+
+        $this.ModernBaseUri = $MURI
+        $this.LegacyBaseUri = $LURI
+        $this.TenantToken   = $Bear
+
+    }
+
+}
 
 class IdnTransformRuleBase                                      {
 
@@ -237,6 +253,8 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
 
 #>
 
+###############################################################################################################################################################################################################
+
 <#
   ____________________________
  |                            |
@@ -244,6 +262,120 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
  |____________________________|
 
 #>
+
+<# function Get-IdnTenantDetails {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance,
+
+        # Switch for V1 URL
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Use the switch for V1 endpoints.")]
+        [switch]$UseV1
+
+    )
+
+    begin   {
+
+        $IdnTenantDetails = New-Object -TypeName "IdnConnectionDetails"
+
+    }
+
+    process {
+
+        if ( -not $UseV1 ) {
+
+            switch ($Instance) {
+
+                "Production"    {
+
+                    $IdnTenantDetails.SetBaseURI(   $ProductionUri      ) 
+                    $IdnTenantDetails.SetToken(     $PdIdentityNowToken )     
+
+                }
+
+                "Sandbox"       {
+
+                    $IdnTenantDetails.SetBaseURI(   $SandBoxUri         )     
+                    $IdnTenantDetails.SetToken(     $SbIdentityNowToken )             
+
+                }                
+
+            }
+
+        }
+
+        else {
+
+            switch ($Instance) {
+
+                "Production"    {
+
+                    $IdnTenantDetails.SetBaseURI(   $ProductionV1       ) 
+                    $IdnTenantDetails.SetToken(     $PdIdentityNowToken )     
+
+                }
+
+                "Sandbox"       {
+
+                    $IdnTenantDetails.SetBaseURI(   $SandBoxV1          )     
+                    $IdnTenantDetails.SetToken(     $SbIdentityNowToken )             
+
+                }                
+
+            }
+
+        }
+
+    }
+
+    end     {
+
+        reutrn $DetailsForTenant
+
+    }
+
+} #>
+
+function Get-IdnTenantDetails {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the Production or Sandbox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance
+
+    )
+
+    process {
+
+        $DetailsForTenant = switch ($Instance) {
+
+            "Production"    { $ProductionIdnConfig  }
+            "Sandbox"       { $SandboxIdnConfig     }
+
+        }
+
+    }
+
+    end     {
+
+        return $DetailsForTenant
+
+    }
+
+}
 
 <#
   __________________________
@@ -253,6 +385,8 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
 
 #>
 
+###############################################################################################################################################################################################################
+
 <#
   ___________________________
  |                           |
@@ -261,7 +395,7 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
 
 #>
 
-function Get-IdnToken                                           {
+<# function Get-IdnToken                                           {
 
     [CmdletBinding()]
 
@@ -289,13 +423,25 @@ function Get-IdnToken                                           {
 
         $BaseUri = switch ($Instance) {
 
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
+            "Production"   {
+                
+                $ProductionUri
+                New-Variable -Name "TokenName" -Value "PdIdentityNowToken"
+                
+            }
+            
+            "SandBox"      {
+                
+                $SandBoxUri
+                New-Variable -Name "TokenName" -Value "SbIdentityNowToken"
+                
+            }
         
         }
 
-        $BSTRID   = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $ClientSecret )
-        $Plain    = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID       )
+        $Object     = New-Object -TypeName "IdnConnectionDetails"
+        $BSTRID     = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $ClientSecret )
+        $Plain      = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID       )
 
     }
 
@@ -319,7 +465,87 @@ function Get-IdnToken                                           {
 
     end {
 
-        return New-Variable -Name "IdentityNowToken" -Value $Bearer -Scope "Global" -Option "ReadOnly" -Force
+        return New-Variable -Name $TokenName -Value $Bearer -Scope "Global" -Option "ReadOnly" -Force
+
+    }
+
+} #>
+
+function Get-IdnToken                                           {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for the Client ID of the Personal Access Token
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Client ID for your Personal Token here.")]
+        [string]$ClientId,
+
+        # Parameter for the Client Secret of the Personal Access Token
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Client Secret for your Personal Token here.")]
+        [securestring]$ClientSecret,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+
+    )
+
+    begin   {
+
+        $BaseUri = switch ($Instance) {
+
+            "Production"   {
+                
+                $ProductionUri
+                $ConfigName = "ProductionIdnConfig"
+                $Legacy     = $ProductionV1
+                
+            }
+            
+            "SandBox"      {
+                
+                $SandBoxUri
+                $ConfigName = "SandboxIdnConfig"
+                $Legacy     = $SandBoxV1
+                
+            }
+        
+        }
+
+        $Object     = New-Object -TypeName "IdnConnectionDetails"
+        $BSTRID     = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $ClientSecret )
+        $Plain      = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID       )
+
+    }
+
+    process {
+
+        $Uri      = $BaseUri + "oauth/token?grant_type=client_credentials&client_id=" + $ClientId + "&client_secret=" + $Plain
+        $Call     = Invoke-RestMethod -Method "Post" -Uri $Uri 
+
+        if ($Call) {
+
+            $Bearer = [ordered]@{
+
+                "Authorization" = "Bearer "     + $Call.access_token
+                "cache-control" = "no-cache"
+
+            }
+
+            $Object.CreateConfig( $BaseUri , $Legacy , $Bearer )
+
+        }
+
+    }
+
+    end     {
+
+        return New-Variable -Name $ConfigName -Value $Object -Scope "Global" -Option "ReadOnly" -Force
 
     }
 
@@ -341,14 +567,8 @@ function Get-IdnInactiveUsers                                   {
 
     begin {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "v2/search?limit=2500&query=%28%28attributes.cloudLifecycleState%3Aterm%2A%29%20AND%20%28roleCount%3A%3e0%29%29"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v2/search?limit=2500&query=%28%28attributes.cloudLifecycleState%3Aterm%2A%29%20AND%20%28roleCount%3A%3e0%29%29"
         
     }
 
@@ -495,14 +715,9 @@ function Get-IdnInactiveUsers                                   {
 
     begin   {
 
-        $BaseUri = switch ($Instance) {
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
 
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri            = $BaseUri + "v2/search?limit=2500&query=%28"
+        $Uri            = $Tenant.ModernBaseUri + "v2/search?limit=2500&query=%28"
         $SearchStrings  = @()
     
     }
@@ -575,16 +790,10 @@ function Get-IdnAccounts                                        {
 
     begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri + "beta/accounts?limit=$Limit&"     }
-            "SandBox"      { $SandBoxUri    + "beta/accounts?limit=$Limit&"     }
-        
-        }
-
-        $Call       = @()
-        $Offset     = 0
-        $Page       = 0
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Call   = @()
+        $Offset = 0
+        $Page   = 0
 
     }
 
@@ -599,9 +808,9 @@ function Get-IdnAccounts                                        {
 
         do {
 
-            try {
+            try     {
 
-                $Uri    = $BaseUri + "offset=$Offset&count=true"
+                $Uri    = $Tenant.ModernBaseUri + "offset=$Offset&count=true"
                 $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ErrorAction "Stop" 
                 $Call  += $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
                 $Total  = [int32]"$($Rest.Headers.'X-Total-Count')"
@@ -612,7 +821,7 @@ function Get-IdnAccounts                                        {
 
             }
 
-            catch {
+            catch   {
 
                 $PSItem.Exception               | Out-Host
                 $PSItem.ErrorDetails.Message    | Out-Host
@@ -631,11 +840,11 @@ function Get-IdnAccounts                                        {
 
 }
 
-function Get-IdnIdentity                                        {
+<# function Get-IdnIdentity                                        {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -651,14 +860,9 @@ function Get-IdnIdentity                                        {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
 
         $Call   = @()
         
@@ -668,14 +872,60 @@ function Get-IdnIdentity                                        {
 
         foreach ($Account in $Id) {
 
-            $Uri   = $BaseUri + "v2/identities/" + $Account
+            $Uri   = $Tenant.ModernBaseUri + "v2/identities/" + $Account
             $Call += Invoke-RestMethod -Method Get -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
             
         }
         
     }
     
-    end {
+    end     {
+
+        return $Call
+        
+    }
+
+} #>
+
+function Get-IdnIdentity                                        {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for specifying the Id of the account to retrieve.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the Id for the account to search for.",
+        ValueFromPipeline = $true)]
+        [string[]]$Id,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Call   = @()
+        
+    }
+    
+    process {
+
+        foreach ($Account in $Id) {
+
+            $Uri   = $Tenant.ModernBaseUri + "v2/identities/" + $Account
+            $Call += Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+            
+        }
+        
+    }
+    
+    end     {
 
         return $Call
         
@@ -687,7 +937,7 @@ function Remove-IdnIdentity                                     {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -702,16 +952,10 @@ function Remove-IdnIdentity                                     {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri   = $BaseUri + "v2/identities/" + $Alias
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v2/identities/" + $Alias
                 
     }
     
@@ -721,7 +965,7 @@ function Remove-IdnIdentity                                     {
                     
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -733,7 +977,7 @@ function Get-IdnIdentitySnapShot                                {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -750,15 +994,9 @@ function Get-IdnIdentitySnapShot                                {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
         $Call   = @()
         
     }
@@ -767,14 +1005,14 @@ function Get-IdnIdentitySnapShot                                {
 
         foreach ($Account in $Id) {
 
-            $Uri   = $BaseUri + "beta/historical-identities/" + $Account
+            $Uri   = $Tenant.ModernBaseUri + "beta/historical-identities/" + $Account
             $Call += Invoke-RestMethod -Method Get -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
             
         }
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -786,7 +1024,7 @@ function Set-IdnIdentity                                        {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for User's Alias to be refreshed.
         [Parameter(Mandatory = $true,
@@ -807,14 +1045,10 @@ function Set-IdnIdentity                                        {
         
     )
     
-    begin {
+    begin   {
 
-        $Uri = switch ($Instance) {
-
-            "Production"   { $ProductionUri + "cc/api/user/updateLifecycleState" }
-            "SandBox"      { $SandBoxUri    + "cc/api/user/updateLifecycleState" }
-        
-        }
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/user/updateLifecycleState"
 
     }
     
@@ -831,7 +1065,7 @@ function Set-IdnIdentity                                        {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -843,7 +1077,7 @@ function Set-IdnIdentityAdminRoles                              {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for User's Alias to be refreshed.
         [Parameter(Mandatory = $true,
@@ -869,16 +1103,10 @@ function Set-IdnIdentityAdminRoles                              {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri   = $BaseUri + "cc/api/user/updatePermissions"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/user/updatePermissions"
 
     }
     
@@ -902,7 +1130,7 @@ function Set-IdnIdentityAdminRoles                              {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -914,7 +1142,7 @@ function Get-IdnSources                                         {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -924,17 +1152,10 @@ function Get-IdnSources                                         {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "cc/api/source/list"
-
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/source/list"
         
     }
     
@@ -984,7 +1205,7 @@ function Get-IdnSources                                         {
 
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -996,7 +1217,7 @@ function Get-IdnSourceSchemas                                   {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1012,16 +1233,10 @@ function Get-IdnSourceSchemas                                   {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/sources/" + $SourceId + "/schemas"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sources/" + $SourceId + "/schemas"
         
     }
     
@@ -1031,7 +1246,7 @@ function Get-IdnSourceSchemas                                   {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1043,7 +1258,7 @@ function Get-IdnSourcesById                                     {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1059,16 +1274,10 @@ function Get-IdnSourcesById                                     {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Call = @()
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Call   = @()
         
     }
     
@@ -1076,14 +1285,14 @@ function Get-IdnSourcesById                                     {
 
         foreach ($Source in $SourceId) {
 
-            $Uri    = $BaseUri + "v3/sources/" + $Source
+            $Uri    = $Tenant.ModernBaseUri + "v3/sources/" + $Source
             $Call  += Invoke-RestMethod -Method Get -Uri $Uri -Headers $IdentityNowToken
             
         }
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1095,7 +1304,7 @@ function Start-IdnSourceAccountAggregation                      {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1111,16 +1320,10 @@ function Start-IdnSourceAccountAggregation                      {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "cc/api/source/loadAccounts/" + $SourceShortId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/source/loadAccounts/" + $SourceShortId
         
     }
     
@@ -1130,7 +1333,7 @@ function Start-IdnSourceAccountAggregation                      {
 
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1142,7 +1345,7 @@ function Get-IdnSourceAccountAggregationStatus                  {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1158,16 +1361,10 @@ function Get-IdnSourceAccountAggregationStatus                  {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/account-aggregations/" + $AggregationId + "/status"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/account-aggregations/" + $AggregationId + "/status"
         
     }
     
@@ -1177,7 +1374,7 @@ function Get-IdnSourceAccountAggregationStatus                  {
 
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1189,7 +1386,7 @@ function Get-IdnProvisioningPoliciesBySource                    {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1205,16 +1402,10 @@ function Get-IdnProvisioningPoliciesBySource                    {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/sources/" + $SourceId + "/provisioning-policies"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sources/" + $SourceId + "/provisioning-policies"
         
     }
     
@@ -1224,7 +1415,7 @@ function Get-IdnProvisioningPoliciesBySource                    {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1260,14 +1451,8 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
     begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-
-        }
-
-        $Uri = $BaseUri + "beta/sources/" + $SourceId + "/provisioning-policies/" + $UsageType
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sources/" + $SourceId + "/provisioning-policies/" + $UsageType
 
     }
 
@@ -1316,14 +1501,8 @@ function Set-IdnProvisioningPoliciesBySource                    {
     
     begin {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-        
-        $Uri = $BaseUri + "cc/api/source/update/" + $SourceCloudExternalId + "/provisioning-policies/" + $UsageType        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri = $Tenant.ModernBaseUri + "cc/api/source/update/" + $SourceCloudExternalId + "/provisioning-policies/" + $UsageType        
         
     }
     
@@ -1345,7 +1524,7 @@ function Update-IdnProvisioningPoliciesBySource                 {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1373,16 +1552,10 @@ function Update-IdnProvisioningPoliciesBySource                 {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri  }
-            "SandBox"      { $SandBoxUri     }
-        
-        }
-
-        $Uri = $BaseUri + "v3/sources/" + $SourceCloudExternalId + "/provisioning-policies/" + $UsageType
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/sources/" + $SourceCloudExternalId + "/provisioning-policies/" + $UsageType
         
     }
     
@@ -1393,7 +1566,7 @@ function Update-IdnProvisioningPoliciesBySource                 {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1405,7 +1578,7 @@ function Remove-IdnProvisioningPoliciesForSource                {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -1433,16 +1606,10 @@ function Remove-IdnProvisioningPoliciesForSource                {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-        
-        $Uri = $BaseUri + "v3/sources/" + $SourceLongId + "/provisioning-policies/" + $UsageType 
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/sources/" + $SourceLongId + "/provisioning-policies/" + $UsageType 
         
     }
     
@@ -1452,7 +1619,7 @@ function Remove-IdnProvisioningPoliciesForSource                {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1464,7 +1631,7 @@ function Get-IdnTransformRules                                  {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -1474,16 +1641,10 @@ function Get-IdnTransformRules                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/transforms"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/transforms"
         
     }
     
@@ -1493,7 +1654,7 @@ function Get-IdnTransformRules                                  {
         
     }
     
-    end {
+    end         {
 
         return $Call
         
@@ -1505,7 +1666,7 @@ function New-IdnTransformRule                                   {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter Json Body
         [Parameter(Mandatory = $true,
@@ -1520,16 +1681,10 @@ function New-IdnTransformRule                                   {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "v3/transforms"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/transforms"
         
     }
     
@@ -1539,7 +1694,7 @@ function New-IdnTransformRule                                   {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1551,7 +1706,7 @@ function Update-IdnTransformRule                                {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for the ID.
         [Parameter(Mandatory = $true,
@@ -1571,16 +1726,10 @@ function Update-IdnTransformRule                                {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "v3/transforms/" + $RuleID
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/transforms/" + $RuleID
         
     }
     
@@ -1590,7 +1739,7 @@ function Update-IdnTransformRule                                {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1602,7 +1751,7 @@ function Get-IdnRole                                            {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for entering the ID of the Role
         [Parameter(Mandatory = $true,
@@ -1622,15 +1771,9 @@ function Get-IdnRole                                            {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
         $Call   = @()
                 
     }
@@ -1639,7 +1782,7 @@ function Get-IdnRole                                            {
 
         foreach ($Entry in $Id) {
         
-            $Uri     = $BaseUri + "beta/roles/" + $Entry
+            $Uri     = $Tenant.ModernBaseUri + "beta/roles/" + $Entry
             $Current = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
 
             if ($ExpandAccessProfiles) {
@@ -1661,7 +1804,7 @@ function Get-IdnRole                                            {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1673,7 +1816,7 @@ function New-IdnRole                                            {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for entering the new Name.
         [Parameter(Mandatory = $true,
@@ -1729,32 +1872,27 @@ function New-IdnRole                                            {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
 
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri        = $BaseUri + "beta/roles/" 
+        $Uri        = $Tenant.ModernBaseUri + "beta/roles/" 
         $UserList   = @( Get-IdnIdentity        -Id $UserAliases      -Instance $Instance -ErrorAction "SilentlyContinue" )
         $APList     = @( Get-IdnAccessProfile   -Id $AccessProfiles   -Instance $Instance -ErrorAction "SilentlyContinue" )
         $Proceed    = $true
         
-        try {
+        try     {
 
             $OwnerInfo = Get-IdnIdentity  -Id $OwnerAlias -Instance $Instance
 
-            if ($UserList.Count -lt 1) {
+            if ( $UserList.Count    -lt 1 ) {
 
                 $Proceed    = $false
                 $Reason    += "Unable to find any Identites in the provided list.  Verify the IDs and try again."
     
             }
 
-            if ($APList.Count -lt 1) {
+            if ( $APList.Count      -lt 1 ) {
 
                 $Proceed    = $false
                 $Reason    += "Unable to find any Access Profiles in the provided list.  Verify the IDs and try again."
@@ -1763,7 +1901,7 @@ function New-IdnRole                                            {
             
         }        
 
-        catch {
+        catch   {
 
             $Proceed    = $false
             $Reason     = "Unable to find the Identity $OwnerAlias.  Verify this is the correct Alias."
@@ -1845,7 +1983,7 @@ function New-IdnRole                                            {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1857,7 +1995,7 @@ function Get-IdnRoles                                           {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -1867,16 +2005,10 @@ function Get-IdnRoles                                           {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "cc/api/role/list"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/role/list"
                 
     }
     
@@ -1886,7 +2018,7 @@ function Get-IdnRoles                                           {
         
     }
     
-    end {
+    end     {
 
         return $Call.items
         
@@ -1898,7 +2030,7 @@ function Update-IdnRoleMembers                                  {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for entering the ID of the Role
         [Parameter(Mandatory = $true,
@@ -1918,16 +2050,10 @@ function Update-IdnRoleMembers                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "cc/api/role/update"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/role/update"
                 
     }
     
@@ -1955,7 +2081,7 @@ function Update-IdnRoleMembers                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -1967,7 +2093,7 @@ function Get-IdnAccessProfiles                                  {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -1977,16 +2103,10 @@ function Get-IdnAccessProfiles                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/access-profiles/"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/access-profiles/"
         
     }
     
@@ -1996,7 +2116,7 @@ function Get-IdnAccessProfiles                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2008,7 +2128,7 @@ function Get-IdnAccessProfile                                   {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for entering the ID of the Role
         [Parameter(Mandatory = $true,
@@ -2023,31 +2143,25 @@ function Get-IdnAccessProfile                                   {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Call = @()
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Call   = @()
         
     }
     
     process {
 
-        foreach ($Profile in $Id) {
+        foreach ($IdProfile in $Id) {
 
-            $Uri    = $BaseUri + "beta/access-profiles/" + $Profile
-            $Call  += Invoke-RestMethod -Method Get -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken 
+            $Uri    = $Tenant.ModernBaseUri + "beta/access-profiles/" + $IdProfile
+            $Call  += Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken 
             
         }
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2059,7 +2173,7 @@ function Start-IdnIdentityRefresh                               {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for User's Alias to be refreshed.
         [Parameter(Mandatory = $true,
@@ -2083,17 +2197,11 @@ function Start-IdnIdentityRefresh                               {
         
     )
     
-    begin {
+    begin   {
 
-        $Array      = @()
-        $BaseUri    = switch ($Instance) {
-            
-            "Production"   { $ProductionV1  }
-            "SandBox"      { $SandBoxV1     }
-
-        }
-        
-        $Uri = $BaseUri + "api/system/refreshIdentities"
+        $Array  = @()
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "api/system/refreshIdentities"
 
     }
     
@@ -2129,7 +2237,7 @@ function Start-IdnIdentityRefresh                               {
 
     }
     
-    end {
+    end     {
 
         return $Array
         
@@ -2141,7 +2249,7 @@ function Get-IdnAccountAggregationStatus                        {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for entering the ID of the Account
         [Parameter(Mandatory = $true,
@@ -2156,16 +2264,10 @@ function Get-IdnAccountAggregationStatus                        {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/account-aggregations/" + $Id + "/status"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/account-aggregations/" + $Id + "/status"
         
     }
     
@@ -2175,7 +2277,7 @@ function Get-IdnAccountAggregationStatus                        {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2187,7 +2289,7 @@ function Get-IdnPendingTasks                                    {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         [int]$PageSize,
         [int]$OffSet,
@@ -2200,16 +2302,10 @@ function Get-IdnPendingTasks                                    {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-        
-        $Uri = $BaseUri + "beta/task-status/pending-tasks?limit=$PageSize&offset=$OffSet"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/task-status/pending-tasks?limit=$PageSize&offset=$OffSet"
         
     }
     
@@ -2219,7 +2315,7 @@ function Get-IdnPendingTasks                                    {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2231,7 +2327,7 @@ function Get-IdnQueue                                           {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2241,16 +2337,10 @@ function Get-IdnQueue                                           {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-        
-        $Uri = $BaseUri + "cc/api/message/getQueueStatus?"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/message/getQueueStatus?"
         
     }
     
@@ -2260,7 +2350,7 @@ function Get-IdnQueue                                           {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2272,7 +2362,7 @@ function Get-IdnJobs                                            {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2282,16 +2372,10 @@ function Get-IdnJobs                                            {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-        
-        $Uri = $BaseUri + "cc/api/message/getActiveJobs"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/message/getActiveJobs"
         
     }
     
@@ -2301,7 +2385,7 @@ function Get-IdnJobs                                            {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2313,7 +2397,7 @@ function Set-IdnSource                                          {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -2334,16 +2418,10 @@ function Set-IdnSource                                          {
 
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/sources/" + $SourceId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sources/" + $SourceId
         
     }
     
@@ -2353,7 +2431,7 @@ function Set-IdnSource                                          {
     
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2365,7 +2443,7 @@ function Get-IdnRules                                           {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2375,16 +2453,10 @@ function Get-IdnRules                                           {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-            
-            "Production"   { $ProductionV1  }
-            "SandBox"      { $SandBoxV1     }
-
-        }
-        
-        $Uri = $BaseUri + "/api/rule/list"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.LegacyBaseUri + "/api/rule/list"
         
     }
     
@@ -2394,7 +2466,7 @@ function Get-IdnRules                                           {
         
     }
     
-    end {
+    end     {
 
         return $Call.items
         
@@ -2406,7 +2478,7 @@ function Get-IdnRule                                            {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for the ID of the Rule to query
         [Parameter(Mandatory = $true,
@@ -2422,16 +2494,10 @@ function Get-IdnRule                                            {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-            
-            "Production"   { $ProductionV1  }
-            "SandBox"      { $SandBoxV1     }
-
-        }
-        
-        $Uri = $BaseUri + "/api/rule/get/$RuleId"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.LegacyBaseUri + "/api/rule/get/$RuleId"
         
     }
     
@@ -2441,7 +2507,7 @@ function Get-IdnRule                                            {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2453,7 +2519,7 @@ function Get-IdnPasswordPolicies                                {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2463,16 +2529,10 @@ function Get-IdnPasswordPolicies                                {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-            
-            "Production"   { $ProductionV1  }
-            "SandBox"      { $SandBoxV1     }
-
-        }
-        
-        $Uri = $BaseUri + "/api/passwordPolicy/list"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.LegacyBaseUri + "/api/passwordPolicy/list"
         
     }
     
@@ -2482,7 +2542,7 @@ function Get-IdnPasswordPolicies                                {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2494,7 +2554,7 @@ function Get-IdnPasswordPolicy                                  {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for the ID of the Rule to query
         [Parameter(Mandatory = $true,
@@ -2510,16 +2570,10 @@ function Get-IdnPasswordPolicy                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-            
-            "Production"   { $ProductionV1  }
-            "SandBox"      { $SandBoxV1     }
-
-        }
-        
-        $Uri = $BaseUri + "/api/passwordPolicy/get/$PolicyId"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.LegacyBaseUri + "/api/passwordPolicy/get/$PolicyId"
         
     }
     
@@ -2529,7 +2583,7 @@ function Get-IdnPasswordPolicy                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2541,7 +2595,7 @@ function New-IdnPasswordPolicy                                  {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for the name of the new policy.
         [Parameter(Mandatory = $true,
@@ -2616,16 +2670,10 @@ function New-IdnPasswordPolicy                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-            
-            "Production"   { $ProductionV1  }
-            "SandBox"      { $SandBoxV1     }
-
-        }
-        
-        $Uri = $BaseUri + "/api/passwordPolicy/create/?name=$Name"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.LegacyBaseUri + "/api/passwordPolicy/create/?name=$Name"
         
     }
     
@@ -2652,7 +2700,7 @@ function New-IdnPasswordPolicy                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2664,7 +2712,7 @@ function Set-IdnSourcePasswordPolicy                            {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for the ID of the Source to updatee.
         [Parameter(Mandatory = $true,
@@ -2684,16 +2732,10 @@ function Set-IdnSourcePasswordPolicy                            {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionV1  }
-            "SandBox"      { $SandBoxV1     }
-
-        }
-        
-        $Uri = $BaseUri + "/api/source/update/$CloudExternalIdForSource`?passwordPolicy=$PwPolicyId"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.LegacyBaseUri + "/api/source/update/$CloudExternalIdForSource`?passwordPolicy=$PwPolicyId"
         
     }
     
@@ -2703,7 +2745,7 @@ function Set-IdnSourcePasswordPolicy                            {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2715,7 +2757,7 @@ function Get-IdnAccountActivity                                 {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -2732,27 +2774,21 @@ function Get-IdnAccountActivity                                 {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "v3/account-activities?requested-for=" + $Id
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/account-activities?requested-for=" + $Id
         $Call   = @()
         
     }
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call += Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2764,7 +2800,7 @@ function Get-IdnAccountHistory                                  {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -2781,25 +2817,20 @@ function Get-IdnAccountHistory                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
         
     }
     
     process {
 
-        $Uri    = $BaseUri + "v3/historical-identities/" + $Id + "/events"
+        $Uri    = $Tenant.ModernBaseUri + "v3/historical-identities/" + $Id + "/events"
         $Call   = Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2812,7 +2843,7 @@ function Update-IdnIdentity                                     {
 
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Account ID for the ID to update
         [Parameter(Mandatory = $true,
@@ -2829,16 +2860,10 @@ function Update-IdnIdentity                                     {
 
     )
 
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-
-        }
-
-        $Uri = $BaseUri + "v2/identities/" + $AccountId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v2/identities/" + $AccountId
 
     }
 
@@ -2848,7 +2873,7 @@ function Update-IdnIdentity                                     {
 
     }
 
-    end {
+    end     {
 
         return $Call
 
@@ -2860,7 +2885,7 @@ function Get-IdnAccountDetails                                  {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -2875,16 +2900,10 @@ function Get-IdnAccountDetails                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "beta/accounts/" + $Id
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/accounts/" + $Id
         
     }
     
@@ -2894,7 +2913,7 @@ function Get-IdnAccountDetails                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2906,7 +2925,7 @@ function Invoke-IdnAccountAggregation                           {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -2922,16 +2941,10 @@ function Invoke-IdnAccountAggregation                           {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "v3/accounts/" + $Id + "/reload"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/accounts/" + $Id + "/reload"
         
     }
     
@@ -2941,7 +2954,7 @@ function Invoke-IdnAccountAggregation                           {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -2953,7 +2966,7 @@ function Get-IdnAccountList                                     {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -2969,16 +2982,10 @@ function Get-IdnAccountList                                     {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "beta/accounts/"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/accounts/"
         
     }
     
@@ -2994,7 +3001,7 @@ function Get-IdnAccountList                                     {
         
     }
     
-    end {
+    end     {
 
         return $Call -creplace "immutableId","immutable_ID" | ConvertFrom-Json
         
@@ -3006,7 +3013,7 @@ function Get-IdnIdentityProfiles                                {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -3016,16 +3023,10 @@ function Get-IdnIdentityProfiles                                {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "cc/api/profile/list"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/profile/list"
 
     }
     
@@ -3035,7 +3036,7 @@ function Get-IdnIdentityProfiles                                {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -3047,7 +3048,7 @@ function Get-IdnIdentityProfile                                 {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         [string]$Id,
 
@@ -3059,16 +3060,10 @@ function Get-IdnIdentityProfile                                 {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "cc/api/profile/get/$Id"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/profile/get/$Id"
 
     }
     
@@ -3078,7 +3073,7 @@ function Get-IdnIdentityProfile                                 {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -3114,14 +3109,8 @@ function Get-IdnIdentityProfileIdentityAttributes               {
     
     begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/identity-profiles/" + $ProfileLongId 
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/identity-profiles/" + $ProfileLongId 
 
         if ($DefaultOnly) {$Uri += "/default-identity-attribute-config"}
 
@@ -3164,7 +3153,7 @@ function Add-IdnIdentityProfileIdentityAttribute                {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for the Long ID of a Source
         [Parameter(Mandatory = $true,
@@ -3186,16 +3175,10 @@ function Add-IdnIdentityProfileIdentityAttribute                {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "v3/identity-profiles/" + $ProfileLongId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/identity-profiles/" + $ProfileLongId
 
     }
     
@@ -3208,7 +3191,7 @@ function Add-IdnIdentityProfileIdentityAttribute                {
         
     }
     
-    end {
+    end     {
 
         return $Call
                 
@@ -3220,7 +3203,7 @@ function Update-IdnIdentityProfileIdentityAttribute             {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for the Long ID of a Source
         [Parameter(Mandatory = $true,
@@ -3242,16 +3225,10 @@ function Update-IdnIdentityProfileIdentityAttribute             {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "v3/identity-profiles/" + $ProfileLongId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/identity-profiles/" + $ProfileLongId
 
     }
     
@@ -3264,7 +3241,7 @@ function Update-IdnIdentityProfileIdentityAttribute             {
         
     }
     
-    end {
+    end     {
 
         return $Call
                 
@@ -3276,7 +3253,7 @@ function Get-IdnLifeCycleState                                  {
 
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for specifying the name of the Life Cycle State.
         [Parameter(Mandatory = $true,
@@ -3296,16 +3273,10 @@ function Get-IdnLifeCycleState                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "beta/identity-profiles/" + $ProfileId + "/lifecycle-states/" + $LifeCycleStateExtId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/identity-profiles/" + $ProfileId + "/lifecycle-states/" + $LifeCycleStateExtId
         
     }
     
@@ -3315,7 +3286,7 @@ function Get-IdnLifeCycleState                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
 
@@ -3327,7 +3298,7 @@ function Get-IdnLifeCycleStates                                 {
 
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for specifying Profile ID.
         [Parameter(Mandatory = $true,
@@ -3342,16 +3313,10 @@ function Get-IdnLifeCycleStates                                 {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "beta/identity-profiles/" + $ProfileId + "/lifecycle-states"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/identity-profiles/" + $ProfileId + "/lifecycle-states"
         
     }
     
@@ -3361,7 +3326,7 @@ function Get-IdnLifeCycleStates                                 {
         
     }
     
-    end {
+    end     {
 
         return $Call
 
@@ -3373,7 +3338,7 @@ function New-IdnLifeCycleState                                  {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for specifying Profile ID.
         [Parameter(Mandatory = $true,
@@ -3403,16 +3368,10 @@ function New-IdnLifeCycleState                                  {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "v3/identity-profiles/" + $ProfileId + "/lifecycle-states/" + $LifeCycleStateExtId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/identity-profiles/" + $ProfileId + "/lifecycle-states/" + $LifeCycleStateExtId
         
     }
     
@@ -3432,7 +3391,7 @@ function New-IdnLifeCycleState                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
 
@@ -3444,7 +3403,7 @@ function Update-IdnLifeCycleState                               {
 
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for specifying the name of the Life Cycle State.
         [Parameter(Mandatory = $true,
@@ -3469,16 +3428,10 @@ function Update-IdnLifeCycleState                               {
         
     )
 
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/identity-profiles/" + $ProfileId + "/lifecycle-states/" + $LifeCycleStateExtId
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/identity-profiles/" + $ProfileId + "/lifecycle-states/" + $LifeCycleStateExtId
         
     }
     
@@ -3488,7 +3441,7 @@ function Update-IdnLifeCycleState                               {
         
     }
     
-    end {
+    end {   
 
         return $Call
 
@@ -3500,7 +3453,7 @@ function Write-IdnLifeCycleJsonPatch                            {
 
     [CmdletBinding()]
     
-    param (
+    param   (
         
         # Switch Parameters to set action to perform.
         [Parameter(ParameterSetName = 'CreateNew'       , Mandatory = $false)][Switch]$CreateNew        ,
@@ -3543,7 +3496,7 @@ function Write-IdnLifeCycleJsonPatch                            {
         
     )
     
-    begin {
+    begin   {
 
         $Object = @(
 
@@ -3615,7 +3568,7 @@ function Write-IdnLifeCycleJsonPatch                            {
         
     }
     
-    end {
+    end     {
 
         return ConvertTo-Json -InputObject $Object -Depth 100
         
@@ -3627,7 +3580,7 @@ function Set-IdnRoleCriteria                                    {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Switches are for specifying the Role to update the Membership Criteria for.
         [Parameter(ParameterSetName = "Microsoft365Licensing" , Mandatory = $true)][switch]$Microsoft365Licensing,
@@ -3648,16 +3601,10 @@ function Set-IdnRoleCriteria                                    {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri + "beta/roles/" }
-            "SandBox"      { $SandBoxUri    + "beta/roles/" }
-        
-        }
-
-        $PatchObject     = @(
+        $Tenant         = Get-IdnTenantDetails -Instance $Instance
+        $PatchObject    = @(
 
             @{
 
@@ -3684,7 +3631,7 @@ function Set-IdnRoleCriteria                                    {
             "Microsoft365Licensing"  {
 
                 $LicenseRole   = Get-IdnRole  -Id "INSERT SOURCE EXTERNAL ID HERE"
-                $Uri            = $BaseUri + $LicenseRole.id 
+                $Uri            = $Tenant.ModernBaseUri + "beta/roles/" + $LicenseRole.id 
                 $LifeCycleRule  = $LicenseRole.membership.criteria.children | Where-Object { $_.operation -eq 'EQUALS' }
                 $CurrentDomains = $LicenseRole.membership.criteria.children | Where-Object { $_.operation -eq 'OR'     }
 
@@ -3736,7 +3683,7 @@ function Set-IdnRoleCriteria                                    {
         
     }
     
-    end {
+    end     {
 
         return $Body
         
@@ -3748,7 +3695,7 @@ function New-IdnAccessProfile                                   {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the name of the Access Profile you'd like to create.
         [Parameter(Mandatory = $true,
@@ -3799,19 +3746,13 @@ function New-IdnAccessProfile                                   {
         
     )
     
-    begin {
+    begin   {
 
-        $Proceed = $true
-        $BaseUri = switch ($Instance) {
+        $Proceed    = $true
+        $Tenant     = Get-IdnTenantDetails -Instance $Instance
+        $Uri        = $Tenant.ModernBaseUri + "beta/access-profiles"
 
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-        
-        $Uri = $BaseUri + "beta/access-profiles"
-
-        try {
+        try     {
 
             $OwnerInfo = Get-IdnIdentity  -Id $OwnerAlias -Instance $Instance
             
@@ -3845,7 +3786,7 @@ function New-IdnAccessProfile                                   {
 
         }        
 
-        catch {
+        catch   {
 
             $Proceed    = $false
             $Reason     = "Unable to find the Identity $OwnerAlias.  Verify this is the correct Alias."
@@ -3934,7 +3875,7 @@ function New-IdnAccessProfile                                   {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -3946,7 +3887,7 @@ function Get-IdnEntitlements                                    {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -3968,26 +3909,20 @@ function Get-IdnEntitlements                                    {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $UTC        = [int][double]::Parse((Get-Date -UFormat %s))
-        $OffSet     = 0 
-        $Page       = 0
-        $Call       = @()
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $UTC    = [int][double]::Parse((Get-Date -UFormat %s))
+        $OffSet = 0 
+        $Page   = 0
+        $Call   = @()
         
     }
     
     process {
 
         $Source     = Get-IdnSourcesById -SourceId $SourceId
-        $RootUri    = $BaseUri + "cc/api/entitlement/list?_dc=" + $UTC + "&CISApplicationId=" + $Source.id + "&limit=" + "$OffsetIncrease" + "&count=true&start="
+        $RootUri    = $Tenant.ModernBaseUri + "cc/api/entitlement/list?_dc=" + $UTC + "&CISApplicationId=" + $Source.id + "&limit=" + "$OffsetIncrease" + "&count=true&start="
         
         do {
 
@@ -4018,7 +3953,7 @@ function Get-IdnEntitlements                                    {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4029,7 +3964,7 @@ function Get-IdnAccountEntitlements                             {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -4044,16 +3979,10 @@ function Get-IdnAccountEntitlements                             {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri    = $BaseUri + "beta/accounts/" + $Id + "/entitlements"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/accounts/" + $Id + "/entitlements"
         
     }
     
@@ -4063,7 +3992,7 @@ function Get-IdnAccountEntitlements                             {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4075,7 +4004,7 @@ function Search-IdnIdentities                                   {
 
     [CmdletBinding( DefaultParameterSetName = "Bulk" )]
 
-    param (
+    param   (
 
         # Parameter for Index to search.
         [Parameter(Mandatory = $true,
@@ -4180,14 +4109,8 @@ function Search-IdnIdentities                                   {
 
     begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri            = $BaseUri + "v3/search?count=true&from=0"
+        $Tenant         = Get-IdnTenantDetails -Instance $Instance
+        $Uri            = $Tenant.ModernBaseUri + "v3/search?count=true&from=0"
         $SearchStrings  = @()
         $ResultStore    = @()
     
@@ -4244,7 +4167,7 @@ function Search-IdnIdentities                                   {
         
     }
 
-    end     {     
+    end     {
 
         return $ResultStore
         # return $Call.Content | ConvertFrom-Json
@@ -4257,7 +4180,7 @@ function Get-IdnEventTriggers                                   {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -4267,16 +4190,10 @@ function Get-IdnEventTriggers                                   {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/triggers"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/triggers"
 
     }
     
@@ -4286,7 +4203,7 @@ function Get-IdnEventTriggers                                   {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4296,7 +4213,7 @@ function Get-IdnEventTriggers                                   {
 
 function Set-IdnAccessProfileEntitlments                        {
 
-    param (
+    param   (
 
         # Parameter for entering the ID of the Role
         [Parameter(Mandatory = $true,
@@ -4315,16 +4232,10 @@ function Set-IdnAccessProfileEntitlments                        {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "v2/access-profiles/" + $Id
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v2/access-profiles/" + $Id
         
     }
     
@@ -4341,7 +4252,7 @@ function Set-IdnAccessProfileEntitlments                        {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4353,7 +4264,7 @@ function Get-IdnIdentityEventHistory                            {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for specifying the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -4369,16 +4280,10 @@ function Get-IdnIdentityEventHistory                            {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/historical-identities/" + $IdentityLongID  + "/events"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/historical-identities/" + $IdentityLongID  + "/events"
         
     }
     
@@ -4388,7 +4293,7 @@ function Get-IdnIdentityEventHistory                            {
             
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4400,7 +4305,7 @@ function Get-IdnDynamicRoleMembership                           {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for specifying the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -4416,17 +4321,13 @@ function Get-IdnDynamicRoleMembership                           {
         
     )
     
-    begin {
+    begin   {
         
         $Start      = 0
         $Limit      = 250
         $TimeStamp  = [int][double]::Parse((Get-Date -UFormat "%s"))
-        $BaseUri    = switch ($Instance) {
-
-            "Production"   { $ProductionUri + "cc/api/role/users/" + $RoleLongID + "/?dc=" + $TimeStamp + "&count=true&limit=" + $Limit }
-            "SandBox"      { $SandBoxUri    + "cc/api/role/users/" + $RoleLongID + "/?dc=" + $TimeStamp + "&count=true&limit=" + $Limit }
-        
-        }
+        $Tenant     = Get-IdnTenantDetails -Instance $Instance
+        $BaseUri    = $Tenant.ModernBaseUri + "cc/api/role/users/" + $RoleLongID + "/?dc=" + $TimeStamp + "&count=true&limit=" + $Limit
         
     }
     
@@ -4434,7 +4335,7 @@ function Get-IdnDynamicRoleMembership                           {
         
         do {
 
-            try {
+            try     {
 
                 $Uri    = $BaseUri + "&start=" + $Start
                 $Rest   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ErrorAction "Stop" 
@@ -4447,7 +4348,7 @@ function Get-IdnDynamicRoleMembership                           {
 
             }
 
-            catch {
+            catch   {
 
                 $PSItem.Exception               | Out-Host
                 $PSItem.ErrorDetails.Message    | Out-Host
@@ -4458,7 +4359,7 @@ function Get-IdnDynamicRoleMembership                           {
 
     }
     
-    end {
+    end     {
     
         return $Call
 
@@ -4470,7 +4371,7 @@ function Start-IdnConfigExport                                  {
 
     [CmdletBinding( DefaultParameterSetName = "Description" )]
     
-    param (
+    param   (
         
         # Parameter the job Description
         [Parameter(ParameterSetName = "Description",
@@ -4532,16 +4433,10 @@ function Start-IdnConfigExport                                  {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-
-        $Uri = $BaseUri + "beta/sp-config/export"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sp-config/export"
         
         $Table = [ordered]@{
 
@@ -4608,7 +4503,7 @@ function Start-IdnConfigExport                                  {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4620,7 +4515,7 @@ function Get-IdnConfigExportStatus                              {
 
     [CmdletBinding()]
     
-    param (
+    param   (
         
         # Parameter the job ID.
         [Parameter(Mandatory = $true,
@@ -4635,16 +4530,10 @@ function Get-IdnConfigExportStatus                              {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-
-        $Uri = $BaseUri + "beta/sp-config/export/" + $JobID
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sp-config/export/" + $JobID
         
     }
     
@@ -4654,7 +4543,7 @@ function Get-IdnConfigExportStatus                              {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4666,7 +4555,7 @@ function Receive-IdnConfigExportStatus                          {
 
     [CmdletBinding()]
     
-    param (
+    param   (
         
         # Parameter the job ID.
         [Parameter(Mandatory = $true,
@@ -4681,16 +4570,10 @@ function Receive-IdnConfigExportStatus                          {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-
-        $Uri = $BaseUri + "beta/sp-config/export/" + $JobID + "/download"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sp-config/export/" + $JobID + "/download"
         
     }
     
@@ -4700,7 +4583,7 @@ function Receive-IdnConfigExportStatus                          {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4712,7 +4595,7 @@ function Get-IdnConfigObjectDetails                             {
 
     [CmdletBinding()]
     
-    param (
+    param   (
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -4722,16 +4605,10 @@ function Get-IdnConfigObjectDetails                             {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-        
-        $Uri = $BaseUri + "beta/sp-config/config-objects"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/sp-config/config-objects"
         
     }
     
@@ -4741,7 +4618,7 @@ function Get-IdnConfigObjectDetails                             {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4753,7 +4630,7 @@ function Move-IdnAccountToNewIdentity                           {
 
     [CmdletBinding()]
     
-    param (
+    param   (
         
         # Parameter the Account ID.
         [Parameter(Mandatory = $true,
@@ -4775,16 +4652,10 @@ function Move-IdnAccountToNewIdentity                           {
         
     )
     
-    begin {
+    begin   {
         
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri }
-            "SandBox"      { $SandBoxUri    }
-        
-        }
-
-        $Uri = $BaseUri + "beta/accounts/" + $AccountID 
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/accounts/" + $AccountID 
         
     }
     
@@ -4807,7 +4678,7 @@ function Move-IdnAccountToNewIdentity                           {
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4819,7 +4690,7 @@ function Get-IdnIdentityRoles                                   {
     
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter for entering the ID of the Role
         [Parameter(Mandatory = $true,
@@ -4834,25 +4705,20 @@ function Get-IdnIdentityRoles                                   {
         
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
                 
     }
     
     process {
     
-        $Uri    = $BaseUri + "beta/roles/identity/" + $IdentityExternalID + "/roles"
+        $Uri    = $Tenant.ModernBaseUri + "beta/roles/identity/" + $IdentityExternalID + "/roles"
         $Call   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -4864,7 +4730,7 @@ function Get-IdnIdentities                                      {
 
     [CmdletBinding()]
 
-    param (
+    param   (
 
         # Parameter specifying the number of accounts to return.
         [Parameter(Mandatory = $false,
@@ -4879,15 +4745,10 @@ function Get-IdnIdentities                                      {
 
     )
 
-    begin {
+    begin   {
 
-        $Uri = switch ($Instance) {
-
-            "Production"   { $ProductionUri + "v3/search"     }
-            "SandBox"      { $SandBoxUri    + "v3/search"     }
-        
-        }
-
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/search"
         $Call           = @()
         $searchAfter    = ''
         $queryCount     = 250
@@ -4899,7 +4760,7 @@ function Get-IdnIdentities                                      {
 
         do {
 
-            try {
+            try     {
 
                 $body = @{
 
@@ -4930,7 +4791,7 @@ function Get-IdnIdentities                                      {
 
             }
 
-            catch {
+            catch   {
 
                 $PSItem.Exception               | Out-Host
                 $PSItem.ErrorDetails.Message    | Out-Host
@@ -4941,7 +4802,7 @@ function Get-IdnIdentities                                      {
 
     }
 
-    end {
+    end     {
 
         return $Call
 
@@ -4953,7 +4814,7 @@ function Reset-IdnSource                                        {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
@@ -4969,26 +4830,21 @@ function Reset-IdnSource                                        {
     
     )
     
-    begin {
+    begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
         
     }
     
     process {
 
 
-        $Uri    = $BaseUri + "cc/api/source/reset/" + $Source
-        $Call  = Invoke-RestMethod -Method Post -Uri $Uri -Headers $IdentityNowToken
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/source/reset/" + $Source
+        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken
         
     }
     
-    end {
+    end     {
 
         return $Call
         
@@ -5000,14 +4856,8 @@ function Get-IdnManagedClusters                                 {
     
     begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/managed-clusters"
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/managed-clusters"
 
     }
 
@@ -5040,14 +4890,8 @@ function Get-IdnManagedCluster                                  {
 
     begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/managed-clusters/" + $ClusterID
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/managed-clusters/" + $ClusterID
 
     }
 
@@ -5080,14 +4924,8 @@ function Get-IdnManagedClientStatus                             {
 
     begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-
-        $Uri = $BaseUri + "beta/managed-clients/" + $ClientID
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/managed-clients/" + $ClientID
 
     }
 
@@ -5309,12 +5147,7 @@ function Add-IdnAccessProfileToRole                             {
 
     begin   {
 
-        $BaseUri    = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
 
     }
 
@@ -5326,7 +5159,7 @@ function Add-IdnAccessProfileToRole                             {
 
             $Array           = @()
             $Patch           = New-Object -TypeName "IdnAddEntitlmentToRole"
-            $Uri             = $BaseUri + "beta/roles/" + $RoleLongID
+            $Uri             = $Tenant.ModernBaseUri + "beta/roles/" + $RoleLongID
             $Patch.value.id  = $Access.id
             $Array          += $Patch
 
@@ -5383,19 +5216,15 @@ function Remove-IdnAccessProfileFromRole                        {
 
     begin   {
 
-        $Remove     = New-Object -TypeName "IdnRemoveEntitlmentFromRole"
-        $BaseUri    = switch ($Instance) {
+        $Remove = New-Object            -TypeName "IdnRemoveEntitlmentFromRole"
+        $Tenant = Get-IdnTenantDetails  -Instance $Instance
 
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
 
     }
 
     process {
 
-        $Uri            = $BaseUri + "beta/roles/" + $RoleLongID
+        $Uri            = $Tenant.ModernBaseUri + "beta/roles/" + $RoleLongID
         $Remove.path   += switch ($PSCmdlet.ParameterSetName) {
 
             "Last"      { "-"       }
@@ -5424,3 +5253,5 @@ function Remove-IdnAccessProfileFromRole                        {
  |_________________________|
 
 #>
+
+###############################################################################################################################################################################################################
