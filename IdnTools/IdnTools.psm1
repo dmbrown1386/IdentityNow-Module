@@ -574,8 +574,8 @@ function Get-IdnInactiveUsers                                   {
 
     process {
 
-        #Call = Invoke-RestMethod -Method Post -Uri $Uri -Headers $IdentityNowToken -Body $Json -ContentType "application/json" 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json" 
+        #Call = Invoke-RestMethod -Method Post -Uri $Uri -Headers $Tenant.TenantToken -Body $Json -ContentType "application/json" 
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" 
 
     }
 
@@ -740,7 +740,7 @@ function Get-IdnInactiveUsers                                   {
 
         $Uri    += $SearchStrings -join "%20AND%20"
         $Uri    += "%29"
-        $Call    = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json"
+        $Call    = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
 
     }
 
@@ -811,7 +811,7 @@ function Get-IdnAccounts                                        {
             try     {
 
                 $Uri    = $Tenant.ModernBaseUri + "offset=$Offset&count=true"
-                $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ErrorAction "Stop" 
+                $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
                 $Call  += $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
                 $Total  = [int32]"$($Rest.Headers.'X-Total-Count')"
                 $PgTtl  = [Math]::Ceiling($Total / $OffsetIncrease)
@@ -873,7 +873,7 @@ function Get-IdnAccounts                                        {
         foreach ($Account in $Id) {
 
             $Uri   = $Tenant.ModernBaseUri + "v2/identities/" + $Account
-            $Call += Invoke-RestMethod -Method Get -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+            $Call += Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
             
         }
         
@@ -961,7 +961,7 @@ function Remove-IdnIdentity                                     {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Delete" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Delete" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
                     
     }
     
@@ -1006,7 +1006,7 @@ function Get-IdnIdentitySnapShot                                {
         foreach ($Account in $Id) {
 
             $Uri   = $Tenant.ModernBaseUri + "beta/historical-identities/" + $Account
-            $Call += Invoke-RestMethod -Method Get -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+            $Call += Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
             
         }
         
@@ -1061,7 +1061,7 @@ function Set-IdnIdentity                                        {
 
         } | ConvertTo-Json -Depth 10
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
         
     }
     
@@ -1126,7 +1126,7 @@ function Set-IdnIdentityAdminRoles                              {
 
         } | ConvertTo-Json -Depth 10
 
-        $Call = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json" | Select-Object StatusCode,StatusDescription
+        $Call = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json" | Select-Object StatusCode,StatusDescription
         
     }
     
@@ -1173,7 +1173,7 @@ function Get-IdnSources                                         {
             try {
 
                 <# $RstUri = $Uri + "limit=1?&offset=$Offset&count=true"
-                $Rest   = Invoke-WebRequest -Method Get -Uri $RstUri -Headers $IdentityNowToken -ErrorAction Stop 
+                $Rest   = Invoke-WebRequest -Method Get -Uri $RstUri -Headers $Tenant.TenantToken -ErrorAction Stop 
                 $Cnvrt  = $Rest.Content | ConvertFrom-Json
                 $Call  += $Cnvrt
                 $Total  = $Rest.Headers.'X-Total-Count'
@@ -1182,7 +1182,7 @@ function Get-IdnSources                                         {
                 $Offset += $Add 
 
                 $RstUri = $Uri + "?limit=1&offset=1&count=true"
-                $Rest   = Invoke-WebRequest -Method "Get" -Uri $RstUri -Headers $IdentityNowToken -ErrorAction "Stop" 
+                $Rest   = Invoke-WebRequest -Method "Get" -Uri $RstUri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
                 $Cnvrt  = $Rest.Content | ConvertFrom-Json
                 $Call  += $Cnvrt
                 $Total  = $Rest.Headers.'X-Total-Count'
@@ -1201,7 +1201,7 @@ function Get-IdnSources                                         {
 
         } until ($Call.Count -eq $Total) #>
         
-        $Call = Invoke-RestMethod -Uri $Uri -Method "Get" -Headers $IdentityNowToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Uri $Uri -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json"
 
     }
     
@@ -1242,7 +1242,7 @@ function Get-IdnSourceSchemas                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -1286,7 +1286,7 @@ function Get-IdnSourcesById                                     {
         foreach ($Source in $SourceId) {
 
             $Uri    = $Tenant.ModernBaseUri + "v3/sources/" + $Source
-            $Call  += Invoke-RestMethod -Method Get -Uri $Uri -Headers $IdentityNowToken
+            $Call  += Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
             
         }
         
@@ -1329,7 +1329,7 @@ function Start-IdnSourceAccountAggregation                      {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken
 
     }
     
@@ -1370,7 +1370,7 @@ function Get-IdnSourceAccountAggregationStatus                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
 
     }
     
@@ -1411,7 +1411,7 @@ function Get-IdnProvisioningPoliciesBySource                    {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -1458,7 +1458,7 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
     process {
 
-        $Call = Invoke-RestMethod -Method Patch -Uri $Uri -Headers $IdentityNowToken -Body $JsonPatch -ContentType "application/json-patch+json"
+        $Call = Invoke-RestMethod -Method Patch -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonPatch -ContentType "application/json-patch+json"
 
     }
 
@@ -1508,7 +1508,7 @@ function Set-IdnProvisioningPoliciesBySource                    {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $JsonUpdate -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
         
     }
     
@@ -1561,8 +1561,8 @@ function Update-IdnProvisioningPoliciesBySource                 {
     
     process {
 
-        #Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $JsonUpdate -ContentType "application/json"
-        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $IdentityNowToken -Body $JsonUpdate -ContentType "application/json"
+        #Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
         
     }
     
@@ -1615,7 +1615,7 @@ function Remove-IdnProvisioningPoliciesForSource                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Post -Uri $Uri -Headers $IdentityNowToken -Body $JsonUpdate -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method Post -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
         
     }
     
@@ -1650,7 +1650,7 @@ function Get-IdnTransformRules                                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -1690,7 +1690,7 @@ function New-IdnTransformRule                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $RuleConfigAsJson -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $RuleConfigAsJson -ContentType "application/json"
         
     }
     
@@ -1735,7 +1735,7 @@ function Update-IdnTransformRule                                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $IdentityNowToken -Body $RuleUpdateJson -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken -Body $RuleUpdateJson -ContentType "application/json"
         
     }
     
@@ -1783,7 +1783,7 @@ function Get-IdnRole                                            {
         foreach ($Entry in $Id) {
         
             $Uri     = $Tenant.ModernBaseUri + "beta/roles/" + $Entry
-            $Current = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+            $Current = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
 
             if ($ExpandAccessProfiles) {
 
@@ -1968,7 +1968,7 @@ function New-IdnRole                                            {
             }
 
             $Body = ConvertTo-Json -InputObject $Object -Depth 100
-            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body
+            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
         
         }
         
@@ -2014,7 +2014,7 @@ function Get-IdnRoles                                           {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $IdentityNowToken  
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken  
         
     }
     
@@ -2077,7 +2077,7 @@ function Update-IdnRoleMembers                                  {
         }
 
         $Body = ConvertTo-Json      -Depth  10      -InputObject    $Object
-        $Call = Invoke-RestMethod   -Method Post    -Headers        $IdentityNowToken  -Uri $Uri -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod   -Method Post    -Headers        $Tenant.TenantToken  -Uri $Uri -ContentType "application/json" -Body $Body
         
     }
     
@@ -2112,7 +2112,7 @@ function Get-IdnAccessProfiles                                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
         
     }
     
@@ -2155,7 +2155,7 @@ function Get-IdnAccessProfile                                   {
         foreach ($IdProfile in $Id) {
 
             $Uri    = $Tenant.ModernBaseUri + "beta/access-profiles/" + $IdProfile
-            $Call  += Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken 
+            $Call  += Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
             
         }
         
@@ -2224,7 +2224,7 @@ function Start-IdnIdentityRefresh                               {
             
             } | ConvertTo-Json -Depth 10
 
-            $Call   = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json"
+            $Call   = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
             $Array += [PSCustomObject]@{
 
                 User        = $User
@@ -2273,7 +2273,7 @@ function Get-IdnAccountAggregationStatus                        {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
         
     }
     
@@ -2311,7 +2311,7 @@ function Get-IdnPendingTasks                                    {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
         
     }
     
@@ -2346,7 +2346,7 @@ function Get-IdnQueue                                           {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
         
     }
     
@@ -2381,7 +2381,7 @@ function Get-IdnJobs                                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
         
     }
     
@@ -2427,7 +2427,7 @@ function Set-IdnSource                                          {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json-patch+json" -Body $JsonPatchObject
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $JsonPatchObject
     
     }
     
@@ -2462,7 +2462,7 @@ function Get-IdnRules                                           {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
         
     }
     
@@ -2503,7 +2503,7 @@ function Get-IdnRule                                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
         
     }
     
@@ -2538,7 +2538,7 @@ function Get-IdnPasswordPolicies                                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
         
     }
     
@@ -2579,7 +2579,7 @@ function Get-IdnPasswordPolicy                                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
         
     }
     
@@ -2696,7 +2696,7 @@ function New-IdnPasswordPolicy                                  {
             
         }
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
         
     }
     
@@ -2741,7 +2741,7 @@ function Set-IdnSourcePasswordPolicy                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken 
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken 
         
     }
     
@@ -2784,7 +2784,7 @@ function Get-IdnAccountActivity                                 {
     
     process {
 
-        $Call += Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call += Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2826,7 +2826,7 @@ function Get-IdnAccountHistory                                  {
     process {
 
         $Uri    = $Tenant.ModernBaseUri + "v3/historical-identities/" + $Id + "/events"
-        $Call   = Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call   = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2869,7 +2869,7 @@ function Update-IdnIdentity                                     {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $IdentityNowToken -Body $JsonPatch -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonPatch -ContentType "application/json"
 
     }
 
@@ -2909,7 +2909,7 @@ function Get-IdnAccountDetails                                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2950,7 +2950,7 @@ function Invoke-IdnAccountAggregation                           {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Post" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2997,7 +2997,7 @@ function Get-IdnAccountList                                     {
 
         }
 
-        $Call = Invoke-RestMethod -Method Get -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -3032,7 +3032,7 @@ function Get-IdnIdentityProfiles                                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -3069,7 +3069,7 @@ function Get-IdnIdentityProfile                                 {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -3118,7 +3118,7 @@ function Get-IdnIdentityProfileIdentityAttributes               {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
 
         if ($Call) {
 
@@ -3187,7 +3187,7 @@ function Add-IdnIdentityProfileIdentityAttribute                {
         foreach ($Patch in $Updates) {$Patch.op = 'add'}
         
         $Body = ConvertTo-Json -InputObject $Updates -Depth 10
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json-patch+json" -Body $Body
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -3237,7 +3237,7 @@ function Update-IdnIdentityProfileIdentityAttribute             {
         foreach ($Patch in $Updates) {$Patch.op = 'replace'}
 
         $Body = ConvertTo-Json      -InputObject    $Updates    -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $IdentityNowToken -ContentType "application/json-patch+json" -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -3282,7 +3282,7 @@ function Get-IdnLifeCycleState                                  {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -Uri $Uri
         
     }
     
@@ -3322,7 +3322,7 @@ function Get-IdnLifeCycleStates                                 {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -Uri $Uri
         
     }
     
@@ -3387,7 +3387,7 @@ function New-IdnLifeCycleState                                  {
         }
 
         $Body = ConvertTo-Json      -InputObject $Object    -Depth      10
-        $Call = Invoke-RestMethod   -Method     "Post"      -Headers    $IdentityNowToken -Uri $Uri -Body $Body -ContentType "application/json"
+        $Call = Invoke-RestMethod   -Method     "Post"      -Headers    $Tenant.TenantToken -Uri $Uri -Body $Body -ContentType "application/json"
         
     }
     
@@ -3437,7 +3437,7 @@ function Update-IdnLifeCycleState                               {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Patch" -Headers $IdentityNowToken -Uri $Uri -ContentType "application/json-patch+json" -Body $JsonPatch
+        $Call = Invoke-RestMethod -Method "Patch" -Headers $Tenant.TenantToken -Uri $Uri -ContentType "application/json-patch+json" -Body $JsonPatch
         
     }
     
@@ -3677,7 +3677,7 @@ function Set-IdnRoleCriteria                                    {
 
             $Body = ConvertTo-Json      -Depth  100     -InputObject    $PatchObject
             Write-Host $Uri -ForegroundColor "Cyan"
-            #Call = Invoke-RestMethod   -Method "Patch" -Headers        $IdentityNowToken       -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
+            #Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken       -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
 
         }
         
@@ -3860,7 +3860,7 @@ function New-IdnAccessProfile                                   {
             }
 
             $Body = ConvertTo-Json -InputObject $Object -Depth 100
-            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json"
+            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
 
         }
 
@@ -3929,7 +3929,7 @@ function Get-IdnEntitlements                                    {
             try {
 
                 $Uri     = $RootUri + "$Offset"
-                $Rest    = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ErrorAction "Stop" 
+                $Rest    = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
                 $Item    = $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
                 $Total   = $Item.count 
                 $Call   += $Item.items
@@ -3949,7 +3949,7 @@ function Get-IdnEntitlements                                    {
 
         } until ($Page -eq $PgTtl)
 
-        #Call = Invoke-WebRequest -Headers $IdentityNowToken -Uri $Uri -Method "Get" -ContentType "application/json"
+        #Call = Invoke-WebRequest -Headers $Tenant.TenantToken -Uri $Uri -Method "Get" -ContentType "application/json"
         
     }
     
@@ -3988,7 +3988,7 @@ function Get-IdnAccountEntitlements                             {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -4157,7 +4157,7 @@ function Search-IdnIdentities                                   {
         do {
 
             $Body                = ConvertTo-Json -InputObject $Object -Depth  10
-            $Call                = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body 
+            $Call                = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body 
             $Numb                = [int32]"$($Call.Headers.Item("X-Total-Count"))"
             $ResultStore        += $Call.Content | ConvertFrom-Json
             $Object.searchAfter  = @( $ResultStore | Select-Object -Last 1 -ExpandProperty "id" )
@@ -4199,7 +4199,7 @@ function Get-IdnEventTriggers                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -4248,7 +4248,7 @@ function Set-IdnAccessProfileEntitlments                        {
         }
 
         $Body = ConvertTo-Json -InputObject $Object -Depth 10
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -ContentType "application/json" -Headers $IdentityNowToken -Body $Body
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken -Body $Body
         
     }
     
@@ -4289,7 +4289,7 @@ function Get-IdnIdentityEventHistory                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Headers $IdentityNowToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
             
     }
     
@@ -4338,7 +4338,7 @@ function Get-IdnDynamicRoleMembership                           {
             try     {
 
                 $Uri    = $BaseUri + "&start=" + $Start
-                $Rest   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ErrorAction "Stop" 
+                $Rest   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
                 $Call  += $Rest.items 
                 $Total  = $Rest.total
                 $PgTtl  = [Math]::Ceiling($Total / $Limit)
@@ -4499,7 +4499,7 @@ function Start-IdnConfigExport                                  {
         }
         
         $Body = ConvertTo-Json      -InputObject    $Table -Depth   10
-        $Call = Invoke-RestMethod   -Method         "Post" -Uri     $Uri -Headers $IdentityNowToken -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Post" -Uri     $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
         
     }
     
@@ -4539,7 +4539,7 @@ function Get-IdnConfigExportStatus                              {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
         
     }
     
@@ -4579,7 +4579,7 @@ function Receive-IdnConfigExportStatus                          {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
         
     }
     
@@ -4614,7 +4614,7 @@ function Get-IdnConfigObjectDetails                             {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
         
     }
     
@@ -4674,7 +4674,7 @@ function Move-IdnAccountToNewIdentity                           {
         )
 
         $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-        $Call = Invoke-WebRequest   -Method         "Patch" -Uri    $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json-patch+json"
+        $Call = Invoke-WebRequest   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json-patch+json"
         
     }
     
@@ -4714,7 +4714,7 @@ function Get-IdnIdentityRoles                                   {
     process {
     
         $Uri    = $Tenant.ModernBaseUri + "beta/roles/identity/" + $IdentityExternalID + "/roles"
-        $Call   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -4784,7 +4784,7 @@ function Get-IdnIdentities                                      {
 
                 } | ConvertTo-Json
                 Write-Progress -Activity "Seach in Progress" -Status "Queried $($queryCount) Identities"
-                $Response = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken -Body $body -ContentType 'application/json' -ErrorAction "Stop"
+                $Response = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $body -ContentType 'application/json' -ErrorAction "Stop"
                 $Call += $Response
                 $searchAfter = $Response[-1].name
                 $queryCount += 250
@@ -4840,7 +4840,7 @@ function Reset-IdnSource                                        {
 
 
         $Uri    = $Tenant.ModernBaseUri + "cc/api/source/reset/" + $Source
-        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $IdentityNowToken
+        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken
         
     }
     
@@ -4863,7 +4863,7 @@ function Get-IdnManagedClusters                                 {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
 
     }
 
@@ -4897,7 +4897,7 @@ function Get-IdnManagedCluster                                  {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
 
     }
 
@@ -4931,7 +4931,7 @@ function Get-IdnManagedClientStatus                             {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $IdentityNowToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
 
     }
 
@@ -5164,7 +5164,7 @@ function Add-IdnAccessProfileToRole                             {
             $Array          += $Patch
 
             $Body = ConvertTo-Json      -InputObject    $Array  -Depth  10
-            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json-patch+json"
+            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json-patch+json"
 
         }
 
@@ -5234,7 +5234,7 @@ function Remove-IdnAccessProfileFromRole                        {
         }
     
         $Body = ConvertTo-Json      -InputObject    @($Remove)  -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $IdentityNowToken -Body $Body -ContentType "application/json-patch+json"
+        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json-patch+json"
 
     }
 
