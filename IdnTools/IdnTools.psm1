@@ -59,9 +59,9 @@
 #>
 
 $ProductionUri  = "https://" + $env:IdnProductionOrgName    + ".api.identitynow.com/"
-$SandBoxUri     = "https://" + $env:IdnSandboxOrgName       + "-sb.api.identitynow.com/"
+$SandBoxUri     = "https://" + $env:IdnSandboxOrgName       + ".api.identitynow.com/"
 $ProductionV1   = "https://" + $env:IdnProductionOrgName    + ".identitynow.com/"
-$SandBoxV1      = "https://" + $env:IdnSandboxOrgName       + "-sb.identitynow.com/"
+$SandBoxV1      = "https://" + $env:IdnSandboxOrgName       + ".identitynow.com/"
 
 <#
   __________________
@@ -253,7 +253,7 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
 
 #>
 
-###############################################################################################################################################################################################################
+##############################################################################################################################################################################################################
 
 <#
   ____________________________
@@ -262,87 +262,6 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
  |____________________________|
 
 #>
-
-<# function Get-IdnTenantDetails {
-
-    [CmdletBinding()]
-
-    param   (
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance,
-
-        # Switch for V1 URL
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Use the switch for V1 endpoints.")]
-        [switch]$UseV1
-
-    )
-
-    begin   {
-
-        $IdnTenantDetails = New-Object -TypeName "IdnConnectionDetails"
-
-    }
-
-    process {
-
-        if ( -not $UseV1 ) {
-
-            switch ($Instance) {
-
-                "Production"    {
-
-                    $IdnTenantDetails.SetBaseURI(   $ProductionUri      ) 
-                    $IdnTenantDetails.SetToken(     $PdIdentityNowToken )     
-
-                }
-
-                "Sandbox"       {
-
-                    $IdnTenantDetails.SetBaseURI(   $SandBoxUri         )     
-                    $IdnTenantDetails.SetToken(     $SbIdentityNowToken )             
-
-                }                
-
-            }
-
-        }
-
-        else {
-
-            switch ($Instance) {
-
-                "Production"    {
-
-                    $IdnTenantDetails.SetBaseURI(   $ProductionV1       ) 
-                    $IdnTenantDetails.SetToken(     $PdIdentityNowToken )     
-
-                }
-
-                "Sandbox"       {
-
-                    $IdnTenantDetails.SetBaseURI(   $SandBoxV1          )     
-                    $IdnTenantDetails.SetToken(     $SbIdentityNowToken )             
-
-                }                
-
-            }
-
-        }
-
-    }
-
-    end     {
-
-        reutrn $DetailsForTenant
-
-    }
-
-} #>
 
 function Get-IdnTenantDetails {
 
@@ -385,7 +304,7 @@ function Get-IdnTenantDetails {
 
 #>
 
-###############################################################################################################################################################################################################
+##############################################################################################################################################################################################################
 
 <#
   ___________________________
@@ -394,82 +313,6 @@ function Get-IdnTenantDetails {
  |___________________________|
 
 #>
-
-<# function Get-IdnToken                                           {
-
-    [CmdletBinding()]
-
-    param (
-
-        # Parameter for the Client ID of the Personal Access Token
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the Client ID for your Personal Token here.")]
-        [string]$ClientId,
-
-        # Parameter for the Client Secret of the Personal Access Token
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the Client Secret for your Personal Token here.")]
-        [securestring]$ClientSecret,
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-
-    )
-
-    begin {
-
-        $BaseUri = switch ($Instance) {
-
-            "Production"   {
-                
-                $ProductionUri
-                New-Variable -Name "TokenName" -Value "PdIdentityNowToken"
-                
-            }
-            
-            "SandBox"      {
-                
-                $SandBoxUri
-                New-Variable -Name "TokenName" -Value "SbIdentityNowToken"
-                
-            }
-        
-        }
-
-        $Object     = New-Object -TypeName "IdnConnectionDetails"
-        $BSTRID     = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $ClientSecret )
-        $Plain      = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID       )
-
-    }
-
-    process {
-
-        $Uri      = $BaseUri + "oauth/token?grant_type=client_credentials&client_id=" + $ClientId + "&client_secret=" + $Plain
-        $Call     = Invoke-RestMethod -Method Post -Uri $Uri 
-
-        if ($Call) {
-
-            $Bearer = [ordered]@{
-
-                "Authorization" = "Bearer "     + $Call.access_token
-                "cache-control" = "no-cache"
-
-            }
-
-        }
-
-    }
-
-    end {
-
-        return New-Variable -Name $TokenName -Value $Bearer -Scope "Global" -Option "ReadOnly" -Force
-
-    }
-
-} #>
 
 function Get-IdnToken                                           {
 
@@ -587,171 +430,6 @@ function Get-IdnInactiveUsers                                   {
 
 }
 
-<# function Search-IdnIdentities                                   {
-
-    [CmdletBinding( DefaultParameterSetName = "Bulk" )]
-
-    param   (
-
-        # Parameter help description
-        [Parameter(ParameterSetName = "Alias",
-        Mandatory = $true,
-        HelpMessage = "Enter the Alias of the Identity to search for.")]
-        [string]$Alias,
-
-        # Parameter for specifying the emailladdress to search for.
-        [Parameter(ParameterSetName = "Email",
-        Mandatory = $true,
-        HelpMessage = "Enter the email address to search for here.")]
-        [string]$EmailAddress,
-
-        # Parameter for specifying first name to search.
-        [Parameter(ParameterSetName = "Firstname",
-        Mandatory = $true,
-        HelpMessage = "Enter the First Name to search for here.")]
-        [Parameter(ParameterSetName = "Lastname",
-        Mandatory = $false,
-        HelpMessage = "Enter the First Name to search for here.")]
-        [string]$FirstName,
-
-        # Parameter for specifying last name to search.
-        [Parameter(ParameterSetName = "Firstname",
-        Mandatory = $false,
-        HelpMessage = "Enter the First Name to search for here.")]        
-        [Parameter(ParameterSetName = "Lastname",
-        Mandatory = $true,
-        HelpMessage = "Enter the First Name to search for here.")]
-        [string]$LastName,
-
-        # Parameter for specifying Life Cycle State.
-        [Parameter(ParameterSetName = "State",
-        Mandatory = $true,
-        HelpMessage = "Select the Life Cycle State to Search for.")]
-        [Parameter(ParameterSetName = "Firstname",
-        Mandatory = $false,
-        HelpMessage = "Select the Life Cycle State to Search for.")]
-        [Parameter(ParameterSetName = "Lastname",
-        Mandatory = $false,
-        HelpMessage = "Select the Life Cycle State to Search for.")]
-        [Parameter(ParameterSetName = "Sourcename",
-        Mandatory = $false,
-        HelpMessage = "Select the Life Cycle State to Search for.")]
-        [Parameter(ParameterSetName = "SourceID",
-        Mandatory = $false,
-        HelpMessage = "Select the Life Cycle State to Search for.")]
-        [ValidateSet("Terminated","Terminated2","Terminated3","Pending","LOA")]
-        [string]$LifeCycleState,
-
-        # Parameter for the name of a Source
-        [Parameter(ParameterSetName = "Sourcename",
-        Mandatory = $true,
-        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
-        [Parameter(ParameterSetName = "Firstname",
-        Mandatory = $false,
-        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
-        [Parameter(ParameterSetName = "Lastname",
-        Mandatory = $false,
-        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
-        [Parameter(ParameterSetName = "State",
-        Mandatory = $false,
-        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
-        [string]$SourceName,
-
-        # Parameter for the Source Long ID.
-        [Parameter(ParameterSetName = "SourceID",
-        Mandatory = $true,
-        HelpMessage = "Specify the Long ID for the Source.")]
-        [Parameter(ParameterSetName = "Firstname",
-        Mandatory = $false,
-        HelpMessage = "Specify the Long ID for the Source.")]
-        [Parameter(ParameterSetName = "Lastname",
-        Mandatory = $false,
-        HelpMessage = "Specify the Long ID for the Source.")]
-        [Parameter(ParameterSetName = "State",
-        Mandatory = $false,
-        HelpMessage = "Specify the Long ID for the Source.")]
-        [string]$LongSourceID,
-
-        # Parameter for the number of hours.
-        [Parameter(ParameterSetName = "Hours",
-        Mandatory = $false,
-        HelpMessage = "Specify the number hours to search Account creations for.")]
-        [Parameter(ParameterSetName = "State",
-        Mandatory = $false,
-        HelpMessage = "Specify the number hours to search Account creations for.")]
-        [Parameter(ParameterSetName = "SourceID",
-        Mandatory = $false,
-        HelpMessage = "Specify the number hours to search Account creations for.")]
-        [Parameter(ParameterSetName = "Sourcename",
-        Mandatory = $false,
-        HelpMessage = "Specify the number hours to search Account creations for.")]
-        [int32]$Hours,
-
-        # Switch to restrict search to only Active users.
-        [Parameter(ParameterSetName = "Active",
-        Mandatory = $true,
-        HelpMessage = "Switch to include only active users in the query.")]
-        [Parameter(ParameterSetName = "Hours",
-        Mandatory = $false,
-        HelpMessage = "Switch to include only active users in the query.")]
-        [Parameter(ParameterSetName = "State",
-        Mandatory = $false,
-        HelpMessage = "Switch to include only active users in the query.")]
-        [Parameter(ParameterSetName = "SourceID",
-        Mandatory = $false,
-        HelpMessage = "Switch to include only active users in the query.")]
-        [Parameter(ParameterSetName = "Sourcename",
-        Mandatory = $false,
-        HelpMessage = "Switch to include only active users in the query.")]
-        [switch]$ActiveOnly,
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-
-    )
-
-    begin   {
-
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-
-        $Uri            = $Tenant.ModernBaseUri + "v2/search?limit=2500&query=%28"
-        $SearchStrings  = @()
-    
-    }
-
-    process {
-
-        switch ($PSBoundParameters.Keys) {
-
-            'Alias'                 { $SearchStrings += "identity_all%3A$Alias"                                                 }
-            'FirstName'             { $SearchStrings += "%28attributes.firstname%3A$FirstName%29"                               }
-            'EmailAddress'          { $SearchStrings += "%28attributes.email%3A%22$EmailAddress%22%29"                          }
-            'EmailDomain'           { $SearchStrings += "%28attributes.email%3A%22%2A%40$EmailDomain%22%29"                     }
-            'ActiveOnly'            { $SearchStrings += "%28attributes.cloudLifecycleState%3Aactive%29"                         }
-            'SourceName'            { $SearchStrings += "@accounts(source.name:$SourceName)"                                    }
-            'LongSourceID'          { $SearchStrings += "@accounts(source.id:$LongSourceID)"                                    }
-            'Hours'                 { $SearchStrings += "(created%3a%5bnow%2D$Hours`h%20TO%20now%5d)"                           }
-            'LifeCycleState'        { $SearchStrings += "%28attributes.cloudLifecycleState%3A$LifeCycleState%29"                }
-            
-        }
-
-        $Uri    += $SearchStrings -join "%20AND%20"
-        $Uri    += "%29"
-        $Call    = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
-
-    }
-
-    end     {
-
-        return $Call.identity
-
-    }
-
-} #>
-
 function Get-IdnAccounts                                        {
 
     [CmdletBinding()]
@@ -839,53 +517,6 @@ function Get-IdnAccounts                                        {
     }
 
 }
-
-<# function Get-IdnIdentity                                        {
-
-    [CmdletBinding()]
-    
-    param   (
-
-        # Parameter for specifying the Id of the account to retrieve.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the Id for the account to search for.",
-        ValueFromPipeline = $true)]
-        [string[]]$Id,
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-        
-    )
-    
-    begin   {
-
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-
-        $Call   = @()
-        
-    }
-    
-    process {
-
-        foreach ($Account in $Id) {
-
-            $Uri   = $Tenant.ModernBaseUri + "v2/identities/" + $Account
-            $Call += Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
-            
-        }
-        
-    }
-    
-    end     {
-
-        return $Call
-        
-    }
-
-} #>
 
 function Get-IdnIdentity                                        {
 
@@ -2201,7 +1832,7 @@ function Start-IdnIdentityRefresh                               {
 
         $Array  = @()
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "api/system/refreshIdentities"
+        $Uri    = $Tenant.LegacyBaseUri + "api/system/refreshIdentities"
 
     }
     
@@ -2456,7 +2087,7 @@ function Get-IdnRules                                           {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "/api/rule/list"
+        $Uri    = $Tenant.LegacyBaseUri + "api/rule/list"
         
     }
     
@@ -2497,7 +2128,7 @@ function Get-IdnRule                                            {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "/api/rule/get/$RuleId"
+        $Uri    = $Tenant.LegacyBaseUri + "api/rule/get/$RuleId"
         
     }
     
@@ -2532,7 +2163,7 @@ function Get-IdnPasswordPolicies                                {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "/api/passwordPolicy/list"
+        $Uri    = $Tenant.LegacyBaseUri + "api/passwordPolicy/list"
         
     }
     
@@ -2573,7 +2204,7 @@ function Get-IdnPasswordPolicy                                  {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "/api/passwordPolicy/get/$PolicyId"
+        $Uri    = $Tenant.LegacyBaseUri + "api/passwordPolicy/get/$PolicyId"
         
     }
     
@@ -2673,7 +2304,7 @@ function New-IdnPasswordPolicy                                  {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "/api/passwordPolicy/create/?name=$Name"
+        $Uri    = $Tenant.LegacyBaseUri + "api/passwordPolicy/create/?name=$Name"
         
     }
     
@@ -2735,7 +2366,7 @@ function Set-IdnSourcePasswordPolicy                            {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "/api/source/update/$CloudExternalIdForSource`?passwordPolicy=$PwPolicyId"
+        $Uri    = $Tenant.LegacyBaseUri + "api/source/update/$CloudExternalIdForSource`?passwordPolicy=$PwPolicyId"
         
     }
     
@@ -5254,4 +4885,4 @@ function Remove-IdnAccessProfileFromRole                        {
 
 #>
 
-###############################################################################################################################################################################################################
+##############################################################################################################################################################################################################
