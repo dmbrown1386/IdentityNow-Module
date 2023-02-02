@@ -51,8 +51,8 @@
  |                 updating Transforms and Identity |                                                  |                 adding and removing Access       |                 pagenation issues with PS 7.     |
  |                 attributes.                      |                                                  |                 Profiles to or from Roles.       |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.49 - Added script to set Org names    | Version: 1.50 - Added Private function to get    |                                                  |                                                  |
- |                 as Environtmental Variables.     |                 Tenant details.                  |                                                  |                                                  |
+ | Version: 1.49 - Added script to set Org names    | Version: 1.50 - Added Private function to get    | Version: 1.51 - Added a Function for paging & a  |                                                  |
+ |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -263,7 +263,7 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
 
 #>
 
-function Get-IdnTenantDetails {
+function Get-IdnTenantDetails                                   {
 
     [CmdletBinding()]
 
@@ -292,6 +292,66 @@ function Get-IdnTenantDetails {
 
         return $DetailsForTenant
 
+    }
+
+}
+
+function Invoke-IdnPaging                                       {
+    
+    [CmdletBinding()]
+    
+    param (
+        
+        # Parameter for the User Token.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Use this parameter to pass your Auth Token.")]
+        [object]$Token,
+
+        # Parameter for URL
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the starting URL for the web calls.")]
+        [string]$StartUri,
+        
+        # Parameter for Offset.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Number of items to grap with each page.")]
+        [int32]$OffsetIncrease,
+
+        # Parameter for the Total.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Total items found.")]
+        [int32]$Total
+
+    )
+    
+    begin   {
+
+        $Page   = 1
+        $Offset = $OffsetIncrease
+        $Stop   = $Total - $OffsetIncrease
+        $Array  = New-Object -TypeName "System.Collections.ArrayList"
+        
+    }
+    
+    process {
+
+        do {
+
+            $Page++
+            $Uri = $StartUri + "?limit=" + $OffsetIncrease + "&offset=" + $Offset
+            $Offset += $OffsetIncrease
+            Write-Progress -Activity "Getting Page #$Page." -Status "$($Array.Count) of $Stop." -PercentComplete ( $Array.Count / $Stop * 100 ) -CurrentOperation $Uri
+            $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Token
+            $Array.AddRange( $Call )
+            
+        } until ( $Array.Count -ge $Stop )
+        
+    }
+    
+    end     {
+        
+        return $Array
+        
     }
 
 }
@@ -4872,6 +4932,64 @@ function Remove-IdnAccessProfileFromRole                        {
     end     {
 
         return $Call
+
+    }
+
+}
+
+function Get-IdnRoleMembership                                  {
+
+    [CmdletBinding()]
+    
+    param (
+    
+        # Parameter for specifying the Id of the account to retrieve.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the Role Id for the account to search for.")]
+        [ValidateLength(32,32)]
+        [string]$RoleLongID,
+        
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin {
+                
+        $Tenant = Get-IdnTenantDetails  -Instance $Instance
+
+    }
+    
+    process {
+        
+        $Uri    = $Tenant.ModernBaseUri + "beta/roles/" + $RoleLongID + "/assigned-identities"
+        $First  = $Uri + "?count=true"
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.ModernBaseUri -ErrorAction "Stop" 
+
+        if ($Rest) {
+
+            $Total  = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $Array  = New-Object        -TypeName       "System.Collections.ArrayList"
+            $Begin  = ConvertFrom-Json  -InputObject    $Rest.Content
+            $Array.AddRange( $Begin )
+
+            if ($Total -gt $Begin.Count) {
+
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 250 -Total $Total
+                $Array.AddRange( $Pages )
+
+            }
+
+        }
+    
+    }
+    
+    end {
+    
+        return $Array
 
     }
 
