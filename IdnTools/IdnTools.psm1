@@ -51,8 +51,9 @@
  |                 updating Transforms and Identity |                                                  |                 adding and removing Access       |                 pagenation issues with PS 7.     |
  |                 attributes.                      |                                                  |                 Profiles to or from Roles.       |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.49 - Added script to set Org names    | Version: 1.50 - Added Private function to get    | Version: 1.51 - Added a Function for paging & a  |                                                  |
- |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                                                  |
+ | Version: 1.49 - Added script to set Org names    | Version: 1.50 - Added Private function to get    | Version: 1.51 - Added a Function for paging & a  | Version: 1.52 - Added Elastic Paging Function,   |
+ |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                 more Search functions & adding   |
+ |                                                  |                                                  |                                                  |                 Dynamic Role criteria.           |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -129,6 +130,24 @@ class IdnRemoveEntitlmentFromRole                               {
     [string]$op         = "remove"
     [string]$path       = "/accessProfiles/"
     
+}
+
+class IdnRolePatch                                              {
+
+    [string]$op = "add"
+    [string]$path = "/membership/criteria/children/-"
+    [hashtable]$value = [ordered]@{}
+
+    [void]SetCriteria( [string]$StringOp , [string]$Type , [string]$Prop , [string]$String ) {
+
+        $this.value.Add( "operation" , $StringOp )
+        $this.value.Add( "key" , @{} )
+        $this.value.Add( "stringValue" , $String )
+        $this.value.key.Add( "type" , $Type )
+        $this.value.key.Add( "property" , $Prop )
+        
+    }
+
 }
 
 class AccountAttributeRule  : IdnTransformRuleBase              {
@@ -343,6 +362,70 @@ function Invoke-IdnPaging                                       {
             Write-Progress -Activity "Getting Page #$Page." -Status "$($Array.Count) of $Stop." -PercentComplete ( $Array.Count / $Stop * 100 ) -CurrentOperation $Uri
             $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Token
             $Array.AddRange( $Call )
+            
+        } until ( $Array.Count -ge $Stop )
+        
+    }
+    
+    end     {
+        
+        return $Array
+        
+    }
+
+}
+
+function Invoke-IdnElasticPaging                                {
+    
+    [CmdletBinding()]
+    
+    param   (
+        
+        # Parameter for the User Token.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Use this parameter to pass your Auth Token.")]
+        [object]$Token,
+
+        # Parameter for URL
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the starting URL for the web calls.")]
+        [string]$StartUri,
+        
+        # Parameter for Offset.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Number of items to grap with each page.")]
+        [int32]$PerPage,
+
+        # Parameter for the Total.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Total items found.")]
+        [int32]$Total,
+        
+        # Parameter Elastic Search Body
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Provide Body Object for Elastic Searcches.")]
+        [hashtable]$ElasticBody
+
+    )
+    
+    begin   {
+
+        $Page   = 1
+        $Stop   = $Total - $PerPage
+        $Array  = New-Object -TypeName "System.Collections.ArrayList"
+        
+    }
+    
+    process {
+
+        do {
+
+            $Page++
+            $Body = $ElasticBody | ConvertTo-Json -Depth 10
+            Write-Progress -Activity "Getting Page #$Page." -Status "$($Array.Count) of $Stop." -PercentComplete ( $Array.Count / $Stop * 100 ) -CurrentOperation $Uri
+            $Call = Invoke-RestMethod -Method "Post" -Uri $StartUri -Headers $Token -Body $Body -ContentType "application/json"
+            $Array.AddRange( $Call )
+            $ElasticBody.searchAfter = @( $Call | Select-Object -ExpandProperty "id" -Last 1 )
             
         } until ( $Array.Count -ge $Stop )
         
@@ -1359,11 +1442,12 @@ function New-IdnTransformRule                                   {
     
     param   (
 
-        # Parameter Json Body
+        # Parameter help description
         [Parameter(Mandatory = $true,
-        HelpMessage = "Pass the JSON for the rule you are creating as a string.")]
-        [string]$RuleConfigAsJson,
-
+        HelpMessage = "Provide the Criteria for the new Transform Rule.")]
+        [ValidateScript({if ( ( $_.GetType() ).BaseType.Name -eq "IdnTransformRuleBase") {$true} else {throw "BaseType is not IdnTransformRuleBase."}})]
+        [object]$TransformRule,
+        
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
         HelpMessage = "Specify the Production or SandBox instance to connect to.")]
@@ -1381,7 +1465,8 @@ function New-IdnTransformRule                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $RuleConfigAsJson -ContentType "application/json"
+        $RuleConfigAsJson   = ConvertTo-Json    -InputObject    $TransformRule  -Depth  100
+        $Call               = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $RuleConfigAsJson -ContentType "application/json"
         
     }
     
@@ -3321,7 +3406,7 @@ function Set-IdnRoleCriteria                                    {
 
             "Microsoft365Licensing"  {
 
-                $LicenseRole   = Get-IdnRole  -Id "INSERT SOURCE EXTERNAL ID HERE"
+                $LicenseRole    = Get-IdnRole  -Id "INSERT SOURCE EXTERNAL ID HERE"
                 $Uri            = $Tenant.ModernBaseUri + "beta/roles/" + $LicenseRole.id 
                 $LifeCycleRule  = $LicenseRole.membership.criteria.children | Where-Object { $_.operation -eq 'EQUALS' }
                 $CurrentDomains = $LicenseRole.membership.criteria.children | Where-Object { $_.operation -eq 'OR'     }
@@ -3697,12 +3782,6 @@ function Search-IdnIdentities                                   {
 
     param   (
 
-        # Parameter for Index to search.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify which Index to search against.")]
-        [ValidateSet("accessprofiles", "accountactivities", "entitlements", "events", "identities", "roles")]
-        [string]$Index,
-
         # Parameter for inserting the query.
         [Parameter(ParameterSetName = "Query",
         Mandatory = $true,
@@ -3830,7 +3909,7 @@ function Search-IdnIdentities                                   {
 
             indices     = @(
 
-                $Index
+                "identities"
 
             )
 
@@ -4941,7 +5020,7 @@ function Get-IdnRoleMembership                                  {
 
     [CmdletBinding()]
     
-    param (
+    param   (
     
         # Parameter for specifying the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
@@ -4957,7 +5036,7 @@ function Get-IdnRoleMembership                                  {
         
     )
     
-    begin {
+    begin   {
                 
         $Tenant = Get-IdnTenantDetails  -Instance $Instance
 
@@ -4987,12 +5066,284 @@ function Get-IdnRoleMembership                                  {
     
     }
     
-    end {
+    end     {
     
         return $Array
 
     }
 
+}
+
+function Search-IdnEvents                                       {
+
+    [CmdletBinding( DefaultParameterSetName = "Bulk" )]
+
+    param   (
+
+        # Parameter for inserting the query.
+        [Parameter(ParameterSetName = "Query",
+        Mandatory = $true,
+        HelpMessage = "Enter the query to submit.")]
+        [string]$Query,
+
+        # Parameter for the name of a Source
+        [Parameter(ParameterSetName = "Sourcename",
+        Mandatory = $true,
+        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Enter the Name of the Source to search for Identities that have accounts.")]
+        [string]$SourceName,
+
+        # Parameter for the Source Long ID.
+        [Parameter(ParameterSetName = "SourceID",
+        Mandatory = $true,
+        HelpMessage = "Specify the Long ID for the Source.")]
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Specify the Long ID for the Source.")]
+        [string]$LongSourceID,
+
+        # Parameter for the number of hours.
+        [Parameter(ParameterSetName = "Hours",
+        Mandatory = $true,
+        HelpMessage = "Specify the number hours to search Account creations for.")]
+        [Parameter(ParameterSetName = "Bulk",
+        Mandatory = $false,
+        HelpMessage = "Specify the number hours to search Account creations for.")]
+        [int32]$Hours,
+
+        # Parameter for Limit.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Set the number if items to return per page, default is the max of 250.")]
+        [ValidateRange(1 , 250)]
+        [int32]$Limit = 250,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+
+    )
+
+    begin   {
+
+        $Tenant         = Get-IdnTenantDetails -Instance $Instance
+        $Uri            = $Tenant.ModernBaseUri + "v3/search?limit=" + $Limit
+        $First          = $Uri + "&count=true"
+        $SearchStrings  = @()
+    
+    }
+
+    process {
+
+        switch ($PSBoundParameters.Keys) {
+
+            'Query'         { $SearchStrings += $Query                                                          }
+            'LongSourceID'  { $SearchStrings += '(attributes.appId:"'           + $LongSourceID + '")'          }
+            'SourceName'    { $SearchStrings += '(attributes.cloudAppName:"'    + $SourceName   + '")'          }
+            'Hours'         { $SearchStrings += '(created:[now-'                + $Hours        + 'h TO now])'  }
+            
+        }
+
+        $Search = $SearchStrings -join " AND "
+
+        $Object = @{
+
+            indices     = @(
+
+                "events"
+
+            )
+
+            query = @{
+
+                query = $Search 
+
+            }
+
+            sort        = @("+id")
+
+        }
+
+        $Body = ConvertTo-Json -InputObject $Object -Depth 10
+        $Rest = Invoke-WebRequest -Method "Post" -Uri $First -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body 
+
+        if ($Rest.Content.Length -ge 3) {
+
+            $Total  = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $Array  = New-Object        -TypeName       "System.Collections.ArrayList"
+            $Begin  = ConvertFrom-Json  -InputObject    $Rest.Content
+            $Array.AddRange( $Begin )
+
+            if ($Total -gt $Begin.Count) {
+
+                $Object.Add( "searchAfter" , @( $Begin | Select-Object -Last 1 -ExpandProperty "id" ) )
+                $Pages = Invoke-IdnElasticPaging -Token $Tenant.TenantToken -StartUri $Uri -ElasticBody $Object -Total $Total -PerPage $Limit
+                $Array.AddRange( $Pages )
+
+            }
+
+        }
+    
+    }
+
+    end     {
+
+        return $Array
+
+    }
+
+}
+
+function Search-IdnCustom                                       {
+
+    [CmdletBinding( DefaultParameterSetName = "Bulk" )]
+
+    param   (
+
+        # Parameter for Index to search.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify which Index to search against.")]
+        [ValidateSet("accessprofiles", "accountactivities", "entitlements", "events", "identities", "roles")]
+        [string]$Index,
+
+        # Parameter for inserting the query.
+        [Parameter(ParameterSetName = "Query",
+        Mandatory = $true,
+        HelpMessage = "Enter the query to submit.")]
+        [string]$Query,
+
+        # Parameter for Limit.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Set the number if items to return per page, default is the max of 250.")]
+        #[ValidateScript( { ( if ( $_ -le 250 -and $_ -ge 1 ) { $true } else { throw "Provided value must be between 1 and 250." } ) } ) ]
+        [ValidateRange(1 , 250)]
+        [int32]$Limit = 250,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+
+    )
+
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/search?limit=" + $Limit
+        $First  = $Uri + "&count=true"
+    
+    }
+
+    process {
+
+        $Object = @{
+
+            indices     = @(
+
+                $Index
+
+            )
+
+            query = @{
+
+                query = $Query 
+
+            }
+
+            sort        = @("+id")
+
+        }
+
+        $Body = ConvertTo-Json -InputObject $Object -Depth 10
+        $Rest = Invoke-WebRequest -Method "Post" -Uri $First -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body 
+
+        if ($Rest.Content.Length -ge 3) {
+
+            $Total  = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $Array  = New-Object        -TypeName       "System.Collections.ArrayList"
+            $Begin  = ConvertFrom-Json  -InputObject    $Rest.Content
+            $Array.AddRange( $Begin )
+
+            if ($Total -gt $Begin.Count) {
+
+                $Object.Add( "searchAfter" , @( $Begin | Select-Object -Last 1 -ExpandProperty "id" ) )
+                $Pages = Invoke-IdnElasticPaging -Token $Tenant.TenantToken -StartUri $Uri -ElasticBody $Object -Total $Total -PerPage $Limit
+                $Array.AddRange( $Pages )
+
+            }
+
+        }
+    
+    }
+
+    end     {
+
+        return $Array
+
+    }
+
+}
+
+function Add-IdnRoleCriteria                                    {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for entering the ID of the Role
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Role you're updating.")]
+        [ValidateLength(32,32)]
+        [string]$Id,
+
+        # Parameter for String Operation. 
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Select the Operation to performon.")]
+        [ValidateSet("EQUALS", "NOT_EQUALS", "CONTAINS", "STARTS_WITH", "ENDS_WITH", "AND", "OR")]
+        [string]$StringOperation,
+
+        [ValidateSet("IDENTITY", "ACCOUNT", "ENTITLEMENT")]
+        [string]$Type,
+
+        [string]$Property,
+
+        [string]$StringValue,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri = $Tenant.ModernBaseUri + "beta/roles/" + $Id
+        $Patch = New-Object -TypeName "IdnRolePatch"
+        $PrePend = "attribute." + $Property
+                
+    }
+    
+    process {
+
+        $Patch.SetCriteria( $StringOperation , $Type , $PrePend , $StringValue )
+        $Body = ConvertTo-Json      -InputObject    $Patch  -Depth  10
+        $Call = Invoke-RestMethod   -Uri            $Uri    -Method "Patch" -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $Body
+        
+    }
+    
+    end     {
+
+        return $Call 
+        
+    }
+    
 }
 
 <#

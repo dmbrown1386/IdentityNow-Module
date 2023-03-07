@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.51'
+    ModuleVersion = '1.52'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -30,8 +30,7 @@
     Copyright = '(c) 2021 Derek Brown. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = "This module contains functions to help manage SailPoint IdentityNow tenants.  The functions use various versions of SailPoint's APIs.  `
-    The only change required is updating the 'OrgName' variable in the .psm1 file with your tenant name."
+    Description  = "This module contains functions to help manage SailPoint IdentityNow tenants.  The functions use various versions of SailPoint's APIs.  The only change required is updating the 'OrgName' variable in the .psm1 file with your tenant name."
 
     # Minimum version of the Windows PowerShell engine required by this module
     # PowerShellVersion = ''
@@ -132,6 +131,7 @@
         "New-IdnAccessProfile"                          ,
         "New-IdnTransformRule"                          ,
         "Search-IdnIdentities"                          ,
+        "Add-IdnRoleCriteria"                           ,
         "Get-IdnEntitlements"                           ,
         "Get-IdnPendingTasks"                           ,
         "Set-IdnRoleCriteria"                           ,
@@ -140,6 +140,8 @@
         "Remove-IdnIdentity"                            ,
         #Update-IdnIdentity"                            ,
         "Get-IdnIdentities"                             ,
+        "Search-IdnCustom"                              ,
+        "Search-IdnEvents"                              ,
         "Get-IdnAccounts"                               ,
         "Get-IdnIdentity"                               ,
         "Reset-IdnSource"                               ,
