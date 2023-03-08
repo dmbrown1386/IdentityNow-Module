@@ -2,14 +2,6 @@
 
 ## DISCLAIMER: This is a community tool and not an official module from SailPoint.  Use at your own risk.
 
-<br>
+### Getting Started
 
-Once you have installed this module you will need to update the variable $OrgName with the name of your Tenant.
-
-![OrgName](/Idn-OrgName.png)
-
-To Authenticate run the Get-IdnToken command.  It only supports the Client Credential method and the Secret must be passed as a Secure String.  If the command succeeds it will create the variable $IdentityNowToken that contains your Access Token and will be used by subsequent calls.  
-
-Below is an example of using the command to generate a new Transform Rule.  This does not submit the Rule, just creates an object following the correct format for an Account Attribute Rule.  You have to enter a 32 Character string for the Source ID referencing the account or the command won't execute.  
-
-![Demo](/Idn-Demo.png)
+Once installed you must run Import-Module to trigger the setup script.  This script will check the current system to make sure the Environmental Variables have been setup.  These Variables store the Org Names for your Production and Sandbxo tenants.  If one or both of these is missing you will unlikely be able to execute any functions until after you manually import the module.
