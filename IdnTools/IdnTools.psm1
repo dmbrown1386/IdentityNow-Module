@@ -575,19 +575,54 @@ function Get-IdnInactiveUsers                                   {
 
 function Get-IdnAccounts                                        {
 
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = "Bulk")]
 
     param   (
 
+        # Parameter for the User Token.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Use this parameter to pass your Auth Token.")]
+        [object]$Token,
+
         # Parameter for specifying a Source to search for accounts in
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "SourceID",
+        HelpMessage = "Enter the long ID fo the Source to search in.")]
         [Parameter(Mandatory = $false,
+        ParameterSetName = "Bulk",
         HelpMessage = "Enter the long ID fo the Source to search in.")]
         [string]$SourceLongId,
 
         # Parameter for specifying a Identity to search for accounts in
-        [Parameter(Mandatory = $false,
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "IdentityID",
         HelpMessage = "Enter the long ID fo the Identity to search for.")]
         [string]$IdentityLongId,
+
+        # Parameter for the Account's Name.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "AcctName",
+        HelpMessage = "Enter the Name (typically the Username) of the account.")]
+        [strinig]$AccountName,
+
+        # Parameter for the Native ID.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Native",
+        HelpMessage = "Enter the Native Identity value to Search for.")]
+        [string]$NativeID,
+
+        # Bool Parameter for Uncorrelated flag.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Bulk",
+        HelpMessage = "Bool Parameter to search only Uncorrlated accounts or not.")]
+        [bool]$Uncorrelated,
+
+        # Parameter for Account ID
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "AcctID",
+        HelpMessage = "Enter the Long ID for the Account.")]
+        [ValidateLength(32,32)]
+        [string]$LongID,
 
         # Parameter specifying the number of accounts to return.
         [Parameter(Mandatory = $false,
@@ -620,10 +655,10 @@ function Get-IdnAccounts                                        {
 
     process {
 
-        switch ($PSBoundParameters.Keys) {
+        $BaseUri = switch ($PSBoundParameters.Keys) {
 
-            "SourceLongId"      { $BaseUri += "filters=sourceId%20eq%20%22$SourceLongId%22&limit=$Limit&"       }
-            "IdentityLongId"    { $BaseUri += "filters=identityId%20eq%20%22$IdentityLongId%22&limit=$Limit&"   }
+            "SourceLongId"      { $Tenant.ModernBaseUri + "filters=sourceId%20eq%20%22$SourceLongId%22&limit=$Limit&"       }
+            "IdentityLongId"    { $Tenant.ModernBaseUri + "filters=identityId%20eq%20%22$IdentityLongId%22&limit=$Limit&"   }
 
         }
 
@@ -631,7 +666,7 @@ function Get-IdnAccounts                                        {
 
             try     {
 
-                $Uri    = $Tenant.ModernBaseUri + "offset=$Offset&count=true"
+                $Uri    = $BaseUri + "offset=$Offset&count=true"
                 $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
                 $Call  += $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
                 $Total  = [int32]"$($Rest.Headers.'X-Total-Count')"
