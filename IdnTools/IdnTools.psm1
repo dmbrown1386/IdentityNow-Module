@@ -54,15 +54,13 @@
  | Version: 1.49 - Added script to set Org names    | Version: 1.50 - Added Private function to get    | Version: 1.51 - Added a Function for paging & a  | Version: 1.52 - Added Elastic Paging Function,   |
  |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                 more Search functions & adding   |
  |                                                  |                                                  |                                                  |                 Dynamic Role criteria.           |
+ | Version: 1.53 - Removed Import script & added a  |                                                  |                                                  |                                                  |
+ |                 function set org names.          |                                                  |                                                  |                                                  |
+ |                                                  |                                                  |                                                  |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
 #>
-
-$ProductionUri  = "https://" + $env:IdnProductionOrgName    + ".api.identitynow.com/"
-$SandBoxUri     = "https://" + $env:IdnSandboxOrgName       + ".api.identitynow.com/"
-$ProductionV1   = "https://" + $env:IdnProductionOrgName    + ".identitynow.com/"
-$SandBoxV1      = "https://" + $env:IdnSandboxOrgName       + ".identitynow.com/"
 
 <#
   __________________
@@ -282,6 +280,22 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
 
 #>
 
+function Import-IdnConfigSettings                               {
+        
+    process {
+
+        $Settings = $env:IdnConfig | ConvertFrom-Json
+        
+    }
+    
+    end {
+
+        return $Settings
+        
+    }
+
+}
+
 function Get-IdnTenantDetails                                   {
 
     [CmdletBinding()]
@@ -457,6 +471,57 @@ function Invoke-IdnElasticPaging                                {
 
 #>
 
+function Update-IdnConfigSettings                               {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Production Org Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Org Name for your Production Tenant")]
+        [ValidateScript( { if ( Test-Connection "$_.api.identitynow.com" -Count 1 ) {$true} else { throw "Could find a tenant with the name $_.  Try again." } } )]
+        [string]$ProdName,
+        
+        # Parameter for Sandbox Org Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Org Name for your Sandbox Tenant")]
+        [ValidateScript( { if ( Test-Connection "$_.api.identitynow.com" -Count 1 ) {$true} else { throw "Could find a tenant with the name $_.  Try again." } } )]
+        [string]$SandboxName,
+
+        # Parameter for Variable Scrope.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Select the scope to create the variable.  Valid Options are User or Machine.")]
+        [ValidateSet("User","Machine")]
+        [string]$Scope
+        
+    )
+    
+    begin {
+
+        $Hash   = @{}
+        
+    }
+    
+    process {
+
+        $Hash.Add( "IdnProd"    , $ProdName     )
+        $Hash.Add( "IdnSandbox" , $SandboxName  )
+        $Json = ConvertTo-Json -InputObject $Hash
+
+        [System.Environment]::SetEnvironmentVariable( "IdnConfig" , $Json , $Scope )
+
+        
+    }
+    
+    end {
+
+        return Set-Item -Path "env:IdnConfig" -Value $Json -Force 
+
+    }
+
+}
+
 function Get-IdnToken                                           {
 
     [CmdletBinding()]
@@ -466,6 +531,7 @@ function Get-IdnToken                                           {
         # Parameter for the Client ID of the Personal Access Token
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the Client ID for your Personal Token here.")]
+        [ValidateScript({ if ( $env:IdnConfig ) {$true} else { throw 'The $env:IdnConfig variable is missing.  Run Update-IdnConfigSettings to create it.' }} )]
         [string]$ClientId,
 
         # Parameter for the Client Secret of the Personal Access Token
@@ -483,33 +549,36 @@ function Get-IdnToken                                           {
 
     begin   {
 
-        $BaseUri = switch ($Instance) {
+        $Names  = Import-IdnConfigSettings
+        $Object = New-Object -TypeName "IdnConnectionDetails"
+        $Modern = "https://{0}.api.identitynow.com/"
+        $Legacy = "https://{0}.identitynow.com/"
+        $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $ClientSecret )
+        $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID       )
+
+    }
+
+    process {
+
+        switch ($Instance) {
 
             "Production"   {
                 
-                $ProductionUri
+                $BaseUri    = $Modern -f $Names.IdnProd
+                $LegacyUri  = $Legacy -f $Names.IdnProd
                 $ConfigName = "ProductionIdnConfig"
-                $Legacy     = $ProductionV1
                 
             }
             
             "SandBox"      {
                 
-                $SandBoxUri
+                $BaseUri    = $Modern -f $Names.IdnSandbox
+                $LegacyUri  = $Legacy -f $Names.IdnSandbox
                 $ConfigName = "SandboxIdnConfig"
-                $Legacy     = $SandBoxV1
                 
             }
         
         }
-
-        $Object     = New-Object -TypeName "IdnConnectionDetails"
-        $BSTRID     = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $ClientSecret )
-        $Plain      = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID       )
-
-    }
-
-    process {
 
         $Uri      = $BaseUri + "oauth/token?grant_type=client_credentials&client_id=" + $ClientId + "&client_secret=" + $Plain
         $Call     = Invoke-RestMethod -Method "Post" -Uri $Uri 
@@ -523,7 +592,7 @@ function Get-IdnToken                                           {
 
             }
 
-            $Object.CreateConfig( $BaseUri , $Legacy , $Bearer )
+            $Object.CreateConfig( $BaseUri , $LegacyUri , $Bearer )
 
         }
 
@@ -927,6 +996,7 @@ function Set-IdnIdentityAdminRoles                              {
             "RemoveRole"    { $false    }
 
         }
+
         $Body = @{
 
             ids             = $IdentityAlias

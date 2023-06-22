@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.52'
+    ModuleVersion = '1.53'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -59,7 +59,7 @@
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
     ScriptsToProcess = @(
 
-        "IdnSetOrgNames.ps1"
+       # "IdnSetOrgNames.ps1"
 
     )
 
@@ -103,6 +103,7 @@
         "Get-IdnConfigExportStatus"                     ,
         "Set-IdnIdentityAdminRoles"                     ,
         "Start-IdnIdentityRefresh"                      ,
+        "Update-IdnConfigSettings"                      ,
         "Update-IdnLifeCycleState"                      ,
         "Get-IdnIdentityProfiles"                       ,
         "Get-IdnIdentitySnapShot"                       ,
