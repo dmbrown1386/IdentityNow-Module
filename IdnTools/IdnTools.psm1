@@ -54,9 +54,9 @@
  | Version: 1.49 - Added script to set Org names    | Version: 1.50 - Added Private function to get    | Version: 1.51 - Added a Function for paging & a  | Version: 1.52 - Added Elastic Paging Function,   |
  |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                 more Search functions & adding   |
  |                                                  |                                                  |                                                  |                 Dynamic Role criteria.           |
+ |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.53 - Removed Import script & added a  |                                                  |                                                  |                                                  |
  |                 function set org names.          |                                                  |                                                  |                                                  |
- |                                                  |                                                  |                                                  |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -1034,7 +1034,7 @@ function Get-IdnSources                                         {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "cc/api/source/list"
+        $Uri    = $Tenant.ModernBaseUri + "v3/sources"
         
     }
     
@@ -2907,7 +2907,8 @@ function Get-IdnIdentityProfiles                                {
     begin   {
         
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "cc/api/profile/list"
+        $Uri    = $Tenant.ModernBaseUri + "v3/identity-profiles"
+
 
     }
     
