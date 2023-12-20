@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.53'
+    ModuleVersion = '1.54'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -24,7 +24,7 @@
     Author = 'Derek Brown'
 
     # Company or vendor of this module
-    CompanyName = 'LFG'
+    CompanyName = ''
 
     # Copyright statement for this module
     Copyright = '(c) 2021 Derek Brown. All rights reserved.'
@@ -90,6 +90,7 @@
         "Set-IdnAccessProfileEntitlments"               ,
         "Receive-IdnConfigExportStatus"                 ,
         "Get-IdnDynamicRoleMembership"                  ,
+        "Import-IdnSourceEntitlements"                  ,
         "Invoke-IdnAccountAggregation"                  ,
         "Move-IdnAccountToNewIdentity"                  ,
         "Get-IdnIdentityEventHistory"                   ,
@@ -103,6 +104,7 @@
         "Get-IdnConfigExportStatus"                     ,
         "Set-IdnIdentityAdminRoles"                     ,
         "Start-IdnIdentityRefresh"                      ,
+        "Import-IdnSourceAccounts"                      ,
         "Update-IdnConfigSettings"                      ,
         "Update-IdnLifeCycleState"                      ,
         "Get-IdnIdentityProfiles"                       ,
@@ -110,6 +112,7 @@
         "Get-IdnPasswordPolicies"                       ,
         "Update-IdnTransformRule"                       ,
         "Get-IdnAccountActivity"                        ,
+        "Get-IdnTaskStatusLists"                        ,
         "Get-IdnIdentityProfile"                        ,
         "Get-IdnLifeCycleStates"                        ,
         "Get-IdnManagedClusters"                        ,
@@ -140,8 +143,10 @@
         "Get-IdnSourcesById"                            ,
         "Remove-IdnIdentity"                            ,
         #Update-IdnIdentity"                            ,
+        "Get-IdnTaskStatus"                             ,
         "Get-IdnIdentities"                             ,
         "Search-IdnCustom"                              ,
+        "Complete-IdnTask"                              ,
         "Search-IdnEvents"                              ,
         "Get-IdnAccounts"                               ,
         "Get-IdnIdentity"                               ,

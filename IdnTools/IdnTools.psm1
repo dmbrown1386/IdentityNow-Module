@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 01/27/2023                                                                                                                                                                                |
+ | Last Modified : 12/20/2023                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -55,8 +55,8 @@
  |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                 more Search functions & adding   |
  |                                                  |                                                  |                                                  |                 Dynamic Role criteria.           |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.53 - Removed Import script & added a  |                                                  |                                                  |                                                  |
- |                 function set org names.          |                                                  |                                                  |                                                  |
+ | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management |                                                  |                                                  |
+ |                 function set org names.          |                 commands.                        |                                                  |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -5324,7 +5324,6 @@ function Search-IdnCustom                                       {
         # Parameter for Limit.
         [Parameter(Mandatory = $false,
         HelpMessage = "Set the number if items to return per page, default is the max of 250.")]
-        #[ValidateScript( { ( if ( $_ -le 250 -and $_ -ge 1 ) { $true } else { throw "Provided value must be between 1 and 250." } ) } ) ]
         [ValidateRange(1 , 250)]
         [int32]$Limit = 250,
 
@@ -5429,10 +5428,10 @@ function Add-IdnRoleCriteria                                    {
     
     begin   {
 
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri = $Tenant.ModernBaseUri + "beta/roles/" + $Id
-        $Patch = New-Object -TypeName "IdnRolePatch"
-        $PrePend = "attribute." + $Property
+        $Tenant     = Get-IdnTenantDetails  -Instance $Instance
+        $Patch      = New-Object            -TypeName "IdnRolePatch"
+        $Uri        = $Tenant.ModernBaseUri + "beta/roles/" + $Id
+        $PrePend    = "attribute."          + $Property
                 
     }
     
@@ -5447,6 +5446,289 @@ function Add-IdnRoleCriteria                                    {
     end     {
 
         return $Call 
+        
+    }
+    
+}
+
+function Import-IdnSourceEntitlements                           {
+
+    [CmdletBinding()]
+    
+    param   (
+    
+        # Parameter for specifying the Id of the source.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the source's cloud external Id.")]
+        [string]$SourceID,
+        
+        # Parameter for the csv file to post.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Provide the path to the CSV to send.")]
+        [string]$CSVPath,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/source/loadEntitlements/" + $SourceID
+        
+    }
+    
+    process {
+
+        $fileBytes  = [System.IO.File       ]::ReadAllBytes(    $CSVPath    )
+        $fileEnc    = [System.Text.Encoding ]::GetEncoding(     'UTF-8'     ).GetString( $fileBytes )
+        $boundary   = New-Guid
+        $Content    = 'multipart/form-data; boundary="{0}"' -f $boundary.Guid
+        $LF         = "`r`n"
+
+        $bodyLines = (
+
+            "--$boundary",
+            "Content-Disposition: form-data; name=`"file`"; filename=`"$CSVPath`"",
+            '',
+            $fileEnc,
+            "--$boundary"
+
+        ) -join $LF
+
+        $Rest = Invoke-RestMethod -Uri $Uri -Headers $Tenant.TenantToken -Method "Post" -ContentType $Content -Body $bodyLines -DisableKeepAlive
+    
+    }
+    
+    end     {
+    
+        return $Rest
+
+    }
+
+}
+
+function Import-IdnSourceAccounts                               {
+
+    [CmdletBinding()]
+    
+    param   (
+    
+        # Parameter for specifying the Id of the source.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the source's cloud external Id.")]
+        [string]$SourceID,
+        
+        # Parameter for the csv file to post.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Provide the path to the CSV to send.")]
+        [string]$CSVPath,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "cc/api/source/loadAccounts/" + $SourceID
+
+    }
+    
+    process {
+
+        $fileBytes  = [System.IO.File       ]::ReadAllBytes(    $CSVPath    )
+        $fileEnc    = [System.Text.Encoding ]::GetEncoding(     'UTF-8'     ).GetString( $fileBytes )
+        $boundary   = New-Guid
+        $Content    = 'multipart/form-data; boundary="{0}"' -f $boundary.Guid
+        $LF         = "`r`n"
+
+        $bodyLines = (
+
+            "--$boundary",
+            "Content-Disposition: form-data; name=`"file`"; filename=`"$CSVPath`"",
+            '',
+            $fileEnc,
+            "--$boundary"
+
+        ) -join $LF
+
+        $Rest = Invoke-RestMethod -Uri $Uri -Headers $Tenant.TenantToken -Method "Post" -ContentType $Content -Body $bodyLines -DisableKeepAlive
+    
+    }
+    
+    end     {
+    
+        return $Rest
+
+    }
+
+}
+
+function Get-IdnTaskStatusLists                                 {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/task-status"
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
+
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+    
+}
+
+function Get-IdnTaskStatus                                      {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter the Task ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID the task to check the status for.")]
+        [ValidateLength(32,32)]
+        [string]$TaskID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/task-status/" + $TaskID
+        
+    }
+    
+    process {
+        
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Token 
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+    
+}
+
+function Complete-IdnTask                                       {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for the User Token.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Use this parameter to pass your Auth Token.")]
+        [object]$Token,
+
+        # Parameter the Task ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID the task to mark complete.")]
+        [ValidateLength(32,32)]
+        [string]$TaskID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $BaseUri = switch ($Instance) {
+
+            "Production"   { $ProductionUri    }
+            "SandBox"      { $SandBoxUri       }
+        
+        }
+        
+        $Uri = $BaseUri + "beta/task-status/" + $TaskID
+        
+    }
+    
+    process {
+
+        $Task = Get-IdnIdentityTaskStatus -Token $Token -TaskID $TaskID -Instance $Instance
+
+        if ($Task) {
+
+            $Epoch  = Get-Date -Year 1970 -Month 1 -Date 1
+            $Added  = $Task.created + 600000
+            $Time   = $Epoch.AddMilliseconds($Added)
+
+            $Object = @(
+
+                @{
+
+                    op = "replace"
+                    path = "/completionStatus"
+                    value = "Success"
+
+                }
+
+                @{
+
+                    op = "replace"
+                    path = "/completed"
+                    value = $Time<# .ToUniversalTime() #>.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+
+                }
+
+            )
+
+            $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
+            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Token -Body $Body
+            
+        }
+
+    }
+    
+    end     {
+
+        return $Call
+        #return $Body
         
     }
     
