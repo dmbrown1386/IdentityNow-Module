@@ -55,8 +55,8 @@
  |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                 more Search functions & adding   |
  |                                                  |                                                  |                                                  |                 Dynamic Role criteria.           |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management |                                                  |                                                  |
- |                 function set org names.          |                 commands.                        |                                                  |                                                  |
+ | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management | Version: 1.55 - Fixed Get-IdnAccounts problems   |                                                  |
+ |                 function set org names.          |                 commands.                        |                 with its Parameters.             |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -644,54 +644,35 @@ function Get-IdnInactiveUsers                                   {
 
 function Get-IdnAccounts                                        {
 
-    [CmdletBinding(DefaultParameterSetName = "Bulk")]
+    [CmdletBinding()]
 
     param   (
 
-        # Parameter for the User Token.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Use this parameter to pass your Auth Token.")]
-        [object]$Token,
-
         # Parameter for specifying a Source to search for accounts in
-        [Parameter(Mandatory = $true,
-        ParameterSetName = "SourceID",
-        HelpMessage = "Enter the long ID fo the Source to search in.")]
         [Parameter(Mandatory = $false,
-        ParameterSetName = "Bulk",
         HelpMessage = "Enter the long ID fo the Source to search in.")]
         [string]$SourceLongId,
 
         # Parameter for specifying a Identity to search for accounts in
-        [Parameter(Mandatory = $true,
-        ParameterSetName = "IdentityID",
+        [Parameter(Mandatory = $false,
         HelpMessage = "Enter the long ID fo the Identity to search for.")]
         [string]$IdentityLongId,
 
         # Parameter for the Account's Name.
-        [Parameter(Mandatory = $true,
-        ParameterSetName = "AcctName",
+        [Parameter(Mandatory = $false,
         HelpMessage = "Enter the Name (typically the Username) of the account.")]
-        [strinig]$AccountName,
+        [string]$AccountName,
 
         # Parameter for the Native ID.
-        [Parameter(Mandatory = $true,
-        ParameterSetName = "Native",
+        [Parameter(Mandatory = $false,
         HelpMessage = "Enter the Native Identity value to Search for.")]
         [string]$NativeID,
 
         # Bool Parameter for Uncorrelated flag.
         [Parameter(Mandatory = $false,
-        ParameterSetName = "Bulk",
         HelpMessage = "Bool Parameter to search only Uncorrlated accounts or not.")]
-        [bool]$Uncorrelated,
-
-        # Parameter for Account ID
-        [Parameter(Mandatory = $true,
-        ParameterSetName = "AcctID",
-        HelpMessage = "Enter the Long ID for the Account.")]
-        [ValidateLength(32,32)]
-        [string]$LongID,
+        [ValidateSet("true","false")]
+        [string]$Uncorrelated,
 
         # Parameter specifying the number of accounts to return.
         [Parameter(Mandatory = $false,
@@ -715,30 +696,38 @@ function Get-IdnAccounts                                        {
 
     begin   {
 
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Call   = @()
-        $Offset = 0
-        $Page   = 0
+        $Tenant  = Get-IdnTenantDetails -Instance $Instance
+        $BaseUri = $Tenant.ModernBaseUri + "v3/accounts?limit=$Limit&filters="
+        $Params  = @()
+        $Call    = @()
+        $Offset  = 0
+        $Page    = 0
 
     }
 
     process {
 
-        $BaseUri = switch ($PSBoundParameters.Keys) {
+        switch ($PSBoundParameters.Keys) {
 
-            "SourceLongId"      { $Tenant.ModernBaseUri + "filters=sourceId%20eq%20%22$SourceLongId%22&limit=$Limit&"       }
-            "IdentityLongId"    { $Tenant.ModernBaseUri + "filters=identityId%20eq%20%22$IdentityLongId%22&limit=$Limit&"   }
-
+            "SourceLongId"      { $Params += 'sourceId eq "{0}"'        -f $SourceLongId    }
+            "IdentityLongId"    { $Params += 'identityId eq "{0}"'      -f $IdentityLongId  }
+            "AccountName"       { $Params += 'name eq "{0}"'            -f $AccountName     }
+            "NativeID"          { $Params += 'nativeIdentity eq "{0}"'  -F $NativeID        }
+            "Uncorrelated"      { $Params += 'uncorrelated eq {0}'      -f $Uncorrelated    }
+  
         }
+
+        $Filters  = $Params -join " and "
+        $BaseUri += $Filters 
 
         do {
 
             try     {
 
-                $Uri    = $BaseUri + "offset=$Offset&count=true"
+                $Uri    = $BaseUri + "&offset=$Offset&count=true"
                 $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
                 $Call  += $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
-                $Total  = [int32]"$($Rest.Headers.'X-Total-Count')"
+                $Total  = "$($Rest.Headers.'X-Total-Count')"
                 $PgTtl  = [Math]::Ceiling($Total / $OffsetIncrease)
                 $Page++
                 Write-Progress -Activity "Page $Page of $PgTtl" -Status "Accounts $($Call.Count) of $Total" -PercentComplete ($Call.Count/$Total*100) -CurrentOperation $Uri
@@ -753,7 +742,7 @@ function Get-IdnAccounts                                        {
 
             }
 
-        } until ($Call.Count -eq $Total)
+        } until ( $Call.Count -eq $Total )
 
     }
 
@@ -796,7 +785,7 @@ function Get-IdnIdentity                                        {
 
         foreach ($Account in $Id) {
 
-            $Uri   = $Tenant.ModernBaseUri + "v2/identities/" + $Account
+            $Uri   = $Tenant.ModernBaseUri + "beta/identities/" + $Account
             $Call += Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
             
         }
@@ -2762,7 +2751,7 @@ function Update-IdnIdentity                                     {
 
 }
 
-function Get-IdnAccountDetails                                  {
+function Get-IdnAccount                                         {
 
     [CmdletBinding()]
     
@@ -2784,13 +2773,13 @@ function Get-IdnAccountDetails                                  {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "beta/accounts/" + $Id
+        $Uri    = $Tenant.ModernBaseUri + "v3/accounts/" + $Id
         
     }
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -5630,7 +5619,6 @@ function Get-IdnTaskStatus                                      {
     
     begin   {
 
-        
         $Tenant = Get-IdnTenantDetails -Instance $Instance
         $Uri    = $Tenant.ModernBaseUri + "beta/task-status/" + $TaskID
         
@@ -5656,11 +5644,6 @@ function Complete-IdnTask                                       {
 
     param   (
 
-        # Parameter for the User Token.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Use this parameter to pass your Auth Token.")]
-        [object]$Token,
-
         # Parameter the Task ID.
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the ID the task to mark complete.")]
@@ -5677,14 +5660,8 @@ function Complete-IdnTask                                       {
     
     begin   {
 
-        $BaseUri = switch ($Instance) {
-
-            "Production"   { $ProductionUri    }
-            "SandBox"      { $SandBoxUri       }
-        
-        }
-        
-        $Uri = $BaseUri + "beta/task-status/" + $TaskID
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "beta/task-status/" + $TaskID
         
     }
     
@@ -5712,7 +5689,7 @@ function Complete-IdnTask                                       {
 
                     op = "replace"
                     path = "/completed"
-                    value = $Time<# .ToUniversalTime() #>.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    value = $Time.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
                 }
 
@@ -5728,7 +5705,6 @@ function Complete-IdnTask                                       {
     end     {
 
         return $Call
-        #return $Body
         
     }
     
