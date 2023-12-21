@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.54'
+    ModuleVersion = '1.55'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -117,7 +117,6 @@
         "Get-IdnLifeCycleStates"                        ,
         "Get-IdnManagedClusters"                        ,
         "Get-IdnAccessProfiles"                         ,
-        "Get-IdnAccountDetails"                         ,
         "Get-IdnAccountHistory"                         ,
         "Get-IdnLifeCycleState"                         ,
         "Get-IdnManagedCluster"                         ,
@@ -152,6 +151,7 @@
         "Get-IdnIdentity"                               ,
         "Reset-IdnSource"                               ,
         "Set-IdnIdentity"                               ,
+        "Get-IdnAccount"                                ,
         "Get-IdnSources"                                ,
         "Set-IdnSource"                                 ,
         "Get-IdnQueue"                                  ,
