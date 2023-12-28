@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 12/20/2023                                                                                                                                                                                |
+ | Last Modified : 12/28/2023                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -55,8 +55,8 @@
  |                 as Environtmental Variables.     |                 Tenant details.                  |                 new function for role members.   |                 more Search functions & adding   |
  |                                                  |                                                  |                                                  |                 Dynamic Role criteria.           |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management | Version: 1.55 - Fixed Get-IdnAccounts problems   |                                                  |
- |                 function set org names.          |                 commands.                        |                 with its Parameters.             |                                                  |
+ | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management | Version: 1.55 - Fixed Get-IdnAccounts problems   | Version: 1.56 - Added Functions and classes for  |
+ |                 function set org names.          |                 commands.                        |                 with its Parameters.             |                 building Standard Roles.         |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -132,18 +132,112 @@ class IdnRemoveEntitlmentFromRole                               {
 
 class IdnRolePatch                                              {
 
-    [string]$op = "add"
-    [string]$path = "/membership/criteria/children/-"
-    [hashtable]$value = [ordered]@{}
+    [string     ]$op    = "add"
+    [string     ]$path  = "/membership/criteria/children/-"
+    [hashtable  ]$value = [ordered]@{}
 
     [void]SetCriteria( [string]$StringOp , [string]$Type , [string]$Prop , [string]$String ) {
 
-        $this.value.Add( "operation" , $StringOp )
-        $this.value.Add( "key" , @{} )
-        $this.value.Add( "stringValue" , $String )
-        $this.value.key.Add( "type" , $Type )
-        $this.value.key.Add( "property" , $Prop )
+        $this.value.Add(        "operation"     , $StringOp )
+        $this.value.Add(        "key"           , @{}       )
+        $this.value.Add(        "stringValue"   , $String   )
+        $this.value.key.Add(    "type"          , $Type     )
+        $this.value.key.Add(    "property"      , $Prop     )
         
+    }
+
+}
+
+class StandardRoleCriteria                                      {
+
+    [string                 ]$type          = "STANDARD"
+    [RoleCriteriaChildItem  ]$criteria      
+    [NullString             ]$identities    = $null
+
+    [void]AddChildren( $Child ) {
+
+        $this.criteria = $Child
+
+    }
+
+    [void]SetGroupOperator( $Operator ) {
+
+        $this.criteria = New-Object "RoleCriteriaChildItem"
+        $this.criteria.operation = $Operator
+        $this.criteria.key = $null
+        $this.criteria.stringValue = ""
+
+    }
+
+}
+
+class RoleCriteriaChildItem                                     {
+    
+    [ValidateSet( "EQUALS", "NOT_EQUALS", "CONTAINS", "STARTS_WITH", "ENDS_WITH", "AND", "OR" )]
+    [string                     ]$operation
+    $key
+    [string                     ]$stringValue
+    [System.Collections.ArrayList]$children     = @()
+
+    [void]SetAndChild() {
+
+        $this.operation     = 'AND'
+        $this.key           = $null
+        $this.stringValue   = ""
+        $this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
+
+    }
+
+    [void]SetOrChild() {
+
+        $this.operation     = 'OR'
+        $this.key           = $null
+        $this.stringValue   = ""
+        $this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
+        #this.children      = New-Object -TypeName "RoleCriteriaChildItem"        
+        
+    }
+
+    [void]SetAccountKey( $Ops , $StringVal , $Poperty , $SourceID ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = @{}
+        $this.key.Add( "type"       , "ACCOUNT"                 )
+        $this.key.Add( "property"   , "attribute.$($Poperty)"   )
+        $this.key.Add( "sourceId"   , $SourceID                 )
+        #this.children = @()
+
+    }
+
+    [void]SetEntitlementKey( $Ops , $StringVal , $SourceID ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = @{}
+        $this.key.Add( "type"       , "ENTITLEMENT"         )
+        $this.key.Add( "property"   , "attribute.memberOf"  )
+        $this.key.Add( "sourceId"   , $SourceID             )
+        #this.children = @()
+
+    }
+
+    [void]SetIdentityKey( $Ops , $StringVal , $Poperty ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = @{}
+        $this.key.Add( "type"       , "IDENTITY"                )
+        $this.key.Add( "property"   , "attribute.$($Poperty)"   )
+        $this.key.Add( "sourceId"   , ""                        )
+        #this.children = @()
+
+    }
+
+    [void]AddNestedChild( $Child ) {
+
+        $this.children += $Child
+
     }
 
 }
@@ -363,15 +457,28 @@ function Invoke-IdnPaging                                       {
         $Offset = $OffsetIncrease
         $Stop   = $Total - $OffsetIncrease
         $Array  = New-Object -TypeName "System.Collections.ArrayList"
+        $UriObj = [System.UriBuilder]::new( $StartUri )
         
     }
     
     process {
 
+        if ($UriObj.Query) {
+
+            $UriObj.Query += "&limit={0}&offset=" -f $OffsetIncrease
+
+        }
+
+        else {
+
+            $UriObj.Query = "limit={0}&offset=" -f $OffsetIncrease
+
+        }
+        
         do {
 
             $Page++
-            $Uri = $StartUri + "?limit=" + $OffsetIncrease + "&offset=" + $Offset
+            $Uri =  "$($UriObj.Uri)" + $Offset
             $Offset += $OffsetIncrease
             Write-Progress -Activity "Getting Page #$Page." -Status "$($Array.Count) of $Stop." -PercentComplete ( $Array.Count / $Stop * 100 ) -CurrentOperation $Uri
             $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Token
@@ -1338,56 +1445,6 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
 }
 
-# Update function is the complete update of the 
-# Provisioning Profile
-<# function Update-IdnProvisioningPoliciesBySource              {
-
-    [CmdletBinding()]
-    
-    param (
-    
-        # Parameter for the ID of the source to query
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter ID of the source you are looking for.")]
-        #[ValidateScript({if ($_.Length -eq 32) {$true} else {throw "Provided value is not the correct length of 32 characters."}})]
-        [string]$SourceCloudExternalId,
-
-        [string]$UsageType = "Create",
-
-        # Parameter for passing the new JSON config for the Profile
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the full JSON configuration to update the Profile with.")]
-        [string]$JsonUpdate,
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-    
-    )
-    
-    begin {
-
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri = $Tenant.ModernBaseUri + "cc/api/source/update/" + $SourceCloudExternalId + "/provisioning-policies/" + $UsageType        
-        
-    }
-    
-    process {
-        
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
-        
-    }
-    
-    end {
-
-        return $Call
-        
-    }
-
-} #>
-
 function Update-IdnProvisioningPoliciesBySource                 {
 
     [CmdletBinding()]
@@ -1429,7 +1486,6 @@ function Update-IdnProvisioningPoliciesBySource                 {
     
     process {
 
-        #Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
         $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
         
     }
@@ -1682,11 +1738,23 @@ function Get-IdnRole                                            {
     
 }
 
-function New-IdnRole                                            {
+function New-IdnRoleOld                                         {
     
     [CmdletBinding()]
 
     param   (
+
+        # Switch for New Role with Identity_Lst
+        [Parameter(Mandatory = $false,
+        HelpMessage=  "Switch to specify the Role uses Membership Type of IDENTITY_LIST.",
+        ParameterSetName = "List")]
+        [switch]$IdentityListRole,
+
+        # Switch for New Role with Identity_Lst
+        [Parameter(Mandatory = $false,
+        HelpMessage=  "Switch to specify the Role uses Membership Type of STANDARD.",
+        ParameterSetName = "Rule")]
+        [switch]$StandardRole,
 
         # Parameter for entering the new Name.
         [Parameter(Mandatory = $true,
@@ -1699,15 +1767,22 @@ function New-IdnRole                                            {
         [string]$Description,
 
         # Parameter for specifying the membership type.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the membership type.  Choose STANDARD (currently not permitted) to specify a rule, or IDENTITY_LIST for manual assignment.")]
-        [ValidateSet("IDENTITY_LIST")]
-        [string]$MembershipType = "IDENTITY_LIST",
+        <# [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the membership type.  Choose STANDARD to specify a rule, or IDENTITY_LIST for manual assignment.")]
+        [ValidateSet("IDENTITY_LIST","STANDARD")]
+        [string]$MembershipType, #>
 
         # Parameter for specifying a list of users.
         [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the the Aliases/Names for the User Identities to add to the Role.")]
-        [string[]]$UserAliases,
+        HelpMessage = "Enter the the Aliases/Names for the User Identities to add to the Role.",
+        ParameterSetName = "List")]
+        [string[]]$IdentityIDs,
+
+        # Parameter help description
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify Membership Criteria with a StandardRoleCriteria object.",
+        ParameterSetName = "Rule")]
+        [StandardRoleCriteria]$MemberShipRule,
 
         # Parameter for entering Entitlements to assign.
         [Parameter(Mandatory = $true,
@@ -1717,8 +1792,9 @@ function New-IdnRole                                            {
         
         # Parameter for specifying the Profle owner
         [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the owner of the new Profile.")]
-        [string]$OwnerAlias,
+        HelpMessage = "Specify the owner of the new Role.")]
+        [ValidateLength(32,32)]
+        [string]$OwnerID,
 
         # Parameter for specifying the Owner Type.
         [Parameter(Mandatory = $false,
@@ -1746,26 +1822,26 @@ function New-IdnRole                                            {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
 
-        $Uri        = $Tenant.ModernBaseUri + "beta/roles/" 
-        $UserList   = @( Get-IdnIdentity        -Id $UserAliases      -Instance $Instance -ErrorAction "SilentlyContinue" )
+        $Uri        = $Tenant.ModernBaseUri + "v3/roles/" 
+        $UserList   = @( Get-IdnIdentity        -Id $IdentityIDs      -Instance $Instance -ErrorAction "SilentlyContinue" )
         $APList     = @( Get-IdnAccessProfile   -Id $AccessProfiles   -Instance $Instance -ErrorAction "SilentlyContinue" )
         $Proceed    = $true
         
         try     {
 
-            $OwnerInfo = Get-IdnIdentity  -Id $OwnerAlias -Instance $Instance
+            $OwnerInfo = Get-IdnIdentity  -Id $OwnerID -Instance $Instance
 
             if ( $UserList.Count    -lt 1 ) {
 
                 $Proceed    = $false
-                $Reason    += "Unable to find any Identites in the provided list.  Verify the IDs and try again."
+                $Reason    += "Unable to find any Identites in the provided list.  Verify the IDs and try again.`n`n"
     
             }
 
             if ( $APList.Count      -lt 1 ) {
 
                 $Proceed    = $false
-                $Reason    += "Unable to find any Access Profiles in the provided list.  Verify the IDs and try again."
+                $Reason    += "Unable to find any Access Profiles in the provided list.  Verify the IDs and try again.`n`n"
     
             }
             
@@ -1774,7 +1850,7 @@ function New-IdnRole                                            {
         catch   {
 
             $Proceed    = $false
-            $Reason     = "Unable to find the Identity $OwnerAlias.  Verify this is the correct Alias."
+            $Reason    += "Unable to find the Identity $OwnerID.  Verify this is the correct Alias.`n`n"
             
         }
                 
@@ -1851,6 +1927,172 @@ function New-IdnRole                                            {
 
         }
         
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+    
+}
+
+function New-IdnRole                                            {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Switch for New Role with Identity_Lst
+        [Parameter(Mandatory = $false,
+        HelpMessage=  "Switch to specify the Role uses Membership Type of IDENTITY_LIST.",
+        ParameterSetName = "List")]
+        [switch]$IdentityListRole,
+
+        # Switch for New Role with Identity_Lst
+        [Parameter(Mandatory = $false,
+        HelpMessage=  "Switch to specify the Role uses Membership Type of STANDARD.",
+        ParameterSetName = "Rule")]
+        [switch]$StandardRole,
+
+        # Parameter for entering the new Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a Name for the Role you want to create.")]
+        [string]$Name,
+
+        # Parameter for specifying a descrption.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify a Description for the new Role.")]
+        [string]$Description,
+
+        # Parameter for specifying a list of users.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the the Aliases/Names for the User Identities to add to the Role.",
+        ParameterSetName = "List")]
+        [string[]]$IdentityIDs,
+
+        # Parameter help description
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify Membership Criteria with a StandardRoleCriteria object.",
+        ParameterSetName = "Rule")]
+        [ValidateScript({( if ( $_.GetType().Name -eq 'StandardRoleCriteria' ) { $true } else { throw "Object is not of required Type: StandardRoleCriteria" } )})]
+        [object]$MembershipRule,
+
+        # Parameter for entering Entitlements to assign.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a list of IDs for Entitlements for this Profile to Grant.")]
+        [ValidateLength(32,32)]
+        [string[]]$AccessProfiles,
+        
+        # Parameter for specifying the Profle owner
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the owner of the new Role.")]
+        [ValidateLength(32,32)]
+        [string]$OwnerID,
+
+        # Parameter for specifying the Owner Type.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify what Type of Object the Owner is.  Default is Identity.")]
+        [ValidateSet("ACCOUNT_CORRELATION_CONFIG","ACCESS_PROFILE","ACCESS_REQUEST_APPROVAL","ACCOUNT","APPLICATION","CAMPAIGN"         ,
+        "CAMPAIGN_FILTER","CERTIFICATION","CLUSTER","CONNECTOR_SCHEMA","ENTITLEMENT","GOVERNANCE_GROUP","IDENTITY","IDENTITY_PROFILE"   ,
+        "IDENTITY_REQUEST","LIFECYCLE_STATE","PASSWORD_POLICY","ROLE","RULE","SOD_POLICY","SOURCE","TAG_CATEGORY","TASK_RESULT"         ,
+        "REPORT_RESULT","SOD_VIOLATION","ACCOUNT_ACTIVITY")]
+        [string]$OwnerType = "IDENTITY",
+
+        # Parameter for specifying whether the Role is Enabled or Disabled
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify whether to create this Role as Enabled or Disabled.  Default is set to Enabled.")]
+        [bool]$Enabled = $true,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $OwnerInfo = Get-IdnIdentity  -Id $OwnerID -Instance $Instance
+        $APList     = @( Get-IdnAccessProfile   -Id $AccessProfiles   -Instance $Instance -ErrorAction "SilentlyContinue" )
+        $Uri        = $Tenant.ModernBaseUri + "v3/roles/" 
+        $AccessProfileArray = @()
+      
+    }
+    
+    process {
+
+        $AccessProfileArray += foreach ($Profile    in $APList      ) {
+            
+            @{
+
+                id      = $Profile.id
+                type    = "ACCESS_PROFILE"
+                name    = $Profile.name
+
+            }
+
+        }
+
+        switch ($PSCmdlet.ParameterSetName) {
+
+            "List" {
+                
+                $UserList   = @( Get-IdnIdentity        -Id $IdentityIDs      -Instance $Instance -ErrorAction "SilentlyContinue" )
+                $UserListArray      = @()
+                $UserListArray      += foreach ($User       in $UserList    ) {
+            
+                    @{
+        
+                        id          = $User.externalId
+                        type        = "IDENTITY"
+                        name        = $User.name
+                        aliasName   = $User.alias
+        
+                    }
+                    
+                }
+                
+                $Membership = @{
+
+                    type        = "IDENTITY_LIST"
+                    identities  = $UserListArray
+
+                }
+            
+            }
+            
+            "Rule" {
+
+                $Membership = $MembershipRule
+            
+
+            }
+        }
+
+        $Object = [ordered]@{
+
+            name            = $Name
+            description     = $Description
+            owner           = @{
+
+                type    = "IDENTITY"
+                id      = $OwnerInfo.id
+
+            }
+
+            accessProfiles  = $AccessProfileArray
+            membership      = $Membership
+            enabled         = $Enabled
+            requestable     = $false
+
+        }
+
+        $Body = ConvertTo-Json -InputObject $Object -Depth 100
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
+    
     }
     
     end     {
@@ -1976,19 +2218,36 @@ function Get-IdnAccessProfiles                                  {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "beta/access-profiles/"
+        $Uri    = "{0}v3/access-profiles/" -f $Tenant.ModernBaseUri
         
     }
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
+        $First = "{0}?count=true" -f $Uri
+        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -ContentType "application/json" -Headers $Tenant.TenantToken 
         
+        if ($Rest.Content.Length -ge 3) {
+
+            $Total  = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $ProfList = New-Object            -TypeName       "System.Collections.ArrayList"
+            $Begin  = @(ConvertFrom-Json    -InputObject    $Rest.Content)
+            $ProfList.AddRange( $Begin )
+
+            if ($Total -gt $Begin.Count) {
+
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 50 -Total $Total
+                $ProfList.AddRange( $Pages )
+
+            }
+
+        }
+
     }
     
     end     {
 
-        return $Call
+        return $ProfList
         
     }
     
@@ -2024,7 +2283,7 @@ function Get-IdnAccessProfile                                   {
 
         foreach ($IdProfile in $Id) {
 
-            $Uri    = $Tenant.ModernBaseUri + "beta/access-profiles/" + $IdProfile
+            $Uri    = $Tenant.ModernBaseUri + "v3/access-profiles/" + $IdProfile
             $Call  += Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
             
         }
@@ -2587,12 +2846,19 @@ function Set-IdnSourcePasswordPolicy                            {
         # Parameter for the ID of the Source to updatee.
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter ID of the Source you want to update.")]
-        [string]$CloudExternalIdForSource,
+        [ValidateLength(32,32)]
+        [string]$SourceID,
 
         # Paramter for the ID of the Password Policy.
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the ID for the password policy to assign to the source.")]
+        [ValidateLength(32,32)]
         [string]$PwPolicyId,
+
+        # Parameter for Policy Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name of the Password Policy.")]
+        [string]$PwPolicyName,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2605,13 +2871,32 @@ function Set-IdnSourcePasswordPolicy                            {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "api/source/update/$CloudExternalIdForSource`?passwordPolicy=$PwPolicyId"
+        $Uri    = "{0}v3/sources/{1}" -f $Tenant.ModernBaseUri , $SourceID
         
     }
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken 
+        $Object = @(
+
+            [ordered]@{
+
+                op = 'replace'
+                path = '/passwordPolicies'
+                value = [ordered]@{
+
+                    type = 'PASSWORD_POLICY'
+                    id = $PolicyId
+                    name = $PwPolicyName
+
+                }
+
+            }
+
+        )
+
+        $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
+        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body
         
     }
     
@@ -3562,7 +3847,7 @@ function Set-IdnRoleCriteria                                    {
     
 }
 
-function New-IdnAccessProfile                                   {
+function New-IdnAccessProfileOld                                {
 
     [CmdletBinding()]
     
@@ -3754,17 +4039,181 @@ function New-IdnAccessProfile                                   {
 
 }
 
-function Get-IdnEntitlements                                    {
+function New-IdnAccessProfile                                   {
 
     [CmdletBinding()]
     
     param   (
+
+        # Parameter for specifying the name of the Access Profile you'd like to create.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify name of the Access Profile you'd like to create.")]
+        [string]$Name,
+
+        # Parameter for specifying a descrption.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify a Description for the new Access Profile.")]
+        [string]$Description,
+
+        # Parameter for specifying the ID of the Source this Profile is for.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the 32 character ID of the Source this Profile is for.")]
+        [ValidateLength(32,32)]
+        [string]$SourceId,
+
+        # Parameter for entering Entitlements to assign.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a list of IDs for Entitlements for this Profile to Grant.")]
+        [ValidateLength(32,32)]
+        [string[]]$EntitlmentIds,
+
+        # Parameter for specifying the Profle owner
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the owner of the new Profile.")]
+        [ValidateLength(32,32)]
+        [string]$OwnerId,
+
+        # Parameter for specifying the Owner Type.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify what Type of Object the Owner is.  Default is Identity.")]
+        [ValidateSet("ACCOUNT_CORRELATION_CONFIG","ACCESS_PROFILE","ACCESS_REQUEST_APPROVAL","ACCOUNT","APPLICATION","CAMPAIGN"         ,
+        "CAMPAIGN_FILTER","CERTIFICATION","CLUSTER","CONNECTOR_SCHEMA","ENTITLEMENT","GOVERNANCE_GROUP","IDENTITY","IDENTITY_PROFILE"   ,
+        "IDENTITY_REQUEST","LIFECYCLE_STATE","PASSWORD_POLICY","ROLE","RULE","SOD_POLICY","SOURCE","TAG_CATEGORY","TASK_RESULT"         ,
+        "REPORT_RESULT","SOD_VIOLATION","ACCOUNT_ACTIVITY")]
+        [string]$OwnerType = "IDENTITY",
+
+        # Parameter for setting the Role as Enabled or Disabled.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Create the Profile as Enabled or Disabled, default is Enabled.")]
+        [bool]$Enabled = $true,
+
+        # Parameter for setting the Role as Enabled or Disabled.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Create the Profile as Enabled or Disabled, default is Enabled.")]
+        [bool]$Requestable = $false,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Tenant             = Get-IdnTenantDetails  -Instance   $Instance
+        $SourceInfo         = Get-IdnSourcesById    -Instance   $Instance -SourceId   $SourceId
+        $EntitlementInfo    = Get-IdnEntitlement    -Instance   $Instance -Id         $EntitlmentIds
+        $Uri                = $Tenant.ModernBaseUri + "v3/access-profiles"
+        
+    }
+    
+    process {
+        
+        if ( $SourceInfo.id -eq ( $EntitlementInfo.source.id | Select-Object -Unique ) ) {
+
+            $EntitlmentArray = foreach ($Entry in $EntitlementInfo) {
+
+                @{
+
+                    name    = $Entry.name
+                    id      = $Entry.id 
+                    type    = "ENTITLEMENT"
+
+                }
+
+            }
+
+            $Object = @{
+
+                name            = $Name
+                description     = $Description
+                enabled         = $Enabled
+                owner           = @{
+
+                    type  = $OwnerType
+                    id    = $OwnerId
+
+                }
+
+                source          = @{
+
+                    id    = $SourceInfo.id
+                    type  = "SOURCE"
+                    name  = $SourceInfo.name
+
+                }
+
+                entitlements    = @($EntitlmentArray)
+                requestable    = $Requestable
+               
+            }
+
+            $Body = ConvertTo-Json -InputObject $Object -Depth 100
+            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
+
+        }
+
+        else {
+            
+            Write-Warning "Source ID does not match the ID for the Entitlments."
+        
+        }
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+}
+
+function Get-IdnEntitlements                                    {
+
+    [CmdletBinding( DefaultParameterSetName = "Staged" )]
+    
+    param   (
     
         # Parameter for the ID of the source to query
-        [Parameter(Mandatory = $true,
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
         HelpMessage = "Enter ID of the source you are looking for.")]
         [ValidateLength(32,32)]
         [string]$SourceId,
+
+        # Parameter for Starting Name
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter a string to search the start of the Name for.")]
+        [string]$NameStartsWith,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the complete name to search for.")]
+        [string]$NameEquals,
+
+        # Parameter for Attribute string.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Search for Entitlment matching Attribute value.")]
+        [string]$Attribute,
+
+        # Parameter for Filter Operator.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Filter Operator.  Default is 'and'.")]
+        [ValidateSet("and","or")]
+        [string]$Operator = "and",
+
+        # Parameter for entering a Custom Filter.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Custom",
+        HelpMessage = "Enter a Custom Filter to search Entitlements for.")]
+        [string]$CustomFilter,
 
         # Parameter specifying the number of accounts to return.
         [Parameter(Mandatory = $false,
@@ -3783,44 +4232,87 @@ function Get-IdnEntitlements                                    {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $UTC    = [int][double]::Parse((Get-Date -UFormat %s))
-        $OffSet = 0 
-        $Page   = 0
-        $Call   = @()
+        $Params = @()
         
     }
     
     process {
 
-        $Source     = Get-IdnSourcesById -SourceId $SourceId
-        $RootUri    = $Tenant.ModernBaseUri + "cc/api/entitlement/list?_dc=" + $UTC + "&CISApplicationId=" + $Source.id + "&limit=" + "$OffsetIncrease" + "&count=true&start="
+        switch ($PSBoundParameters.Keys) {
+            
+            "SourceId"          { $Params += 'source.id eq "{0}"'   -f $SourceId        }
+            "NameStartsWith"    { $Params += 'name sw "{0}"'        -f $NameStartsWith  }
+            "NameEquals"        { $Params += 'name eq "{0}"'        -f $NameEquals      }
+            "Attribute"         { $Params += 'attribute eq "{0}"'   -f $Attribute       }
+            "CustomFilter"      { $Params += '{0}'                  -f $CustomFilter    }
+
+        }
+
+        $Filter     = $Params -join " $Operator "
+        $RootUri    = "{0}beta/entitlements?filters={1}" -f $Tenant.ModernBaseUri , $Filter
+        $First      = "{0}&count=true" -f $RootUri
+        $Rest       = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken -ErrorAction "Stop" 
         
-        do {
+        if ( $Rest.Content.Length -ge 3 ) {
 
-            try {
+            $Total  = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $EntLst = New-Object            -TypeName       "System.Collections.ArrayList"
+            $Begin  = @(ConvertFrom-Json    -InputObject    $Rest.Content)
+            $EntLst.AddRange( $Begin )
 
-                $Uri     = $RootUri + "$Offset"
-                $Rest    = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
-                $Item    = $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
-                $Total   = $Item.count 
-                $Call   += $Item.items
-                $Offset += $OffsetIncrease
-                $PgTtl   = [Math]::Ceiling($Total / $OffsetIncrease)
-                $Page++
-                Write-Progress -Activity "Page $Page of $PgTtl" -Status "Entitlements $($Call.Count) of $Total" -PercentComplete ($Page/$PgTtl*100) -CurrentOperation $Source.name 
-                
-            }
+            if ($Total -gt $Begin.Count) {
 
-            catch {
-
-                $PSItem.Exception               | Out-Host
-                $PSItem.ErrorDetails.Message    | Out-Host
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $RootUri -OffsetIncrease 250 -Total $Total
+                $EntLst.AddRange( $Pages )
 
             }
 
-        } until ($Page -eq $PgTtl)
+        }
 
-        #Call = Invoke-WebRequest -Headers $Tenant.TenantToken -Uri $Uri -Method "Get" -ContentType "application/json"
+    }
+    
+    end     {
+
+        return $EntLst
+        
+    }
+
+}
+
+function Get-IdnEntitlement                                     {
+
+    [CmdletBinding()]
+    
+    param   (
+    
+        # Parameter for the ID of the source to query
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter ID of the source you are looking for.")]
+        [ValidateLength(32,32)]
+        [string[]]$Id,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        
+    }
+    
+    process {
+        
+        $Call = foreach ($Item in $id) {
+            
+            $Uri    = "{0}beta/entitlements/{1}" -f $Tenant.ModernBaseUri , $Item
+            Invoke-RestMethod -Headers $Tenant.TenantToken -Uri $Uri -Method "Get" -ContentType "application/json"
+
+        }
         
     }
     
@@ -5141,7 +5633,7 @@ function Get-IdnRoleMembership                                  {
         
         $Uri    = $Tenant.ModernBaseUri + "beta/roles/" + $RoleLongID + "/assigned-identities"
         $First  = $Uri + "?count=true"
-        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.ModernBaseUri -ErrorAction "Stop" 
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken -ErrorAction "Stop" 
 
         if ($Rest) {
 
@@ -5708,6 +6200,171 @@ function Complete-IdnTask                                       {
         
     }
     
+}
+
+function New-IdnRoleCriteria                                    {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Between Groups Operator.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "WithChild",
+        HelpMessage = "Select the Operator to use for Between Groups.")]
+        [ValidateSet("AND","OR")]
+        [string]$BetweenOperator,
+
+        # Switch to make just Role. 
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Empty",
+        HelpMessage = "Switch to create the Role Object with no Children.")]
+        [switch]$WithoutChildren
+        
+    )
+    
+    begin {
+
+        #CriteriaObj        = New-Object -TypeName "RoleCriteriaChildItem"
+        $StandardCriteria   = New-Object -TypeName "StandardRoleCriteria"
+
+    }
+    
+    process {
+
+        if ( -not $WithoutChildren ) {
+
+            $CriteriaObj        = New-Object -TypeName "RoleCriteriaChildItem"
+
+            switch ($BetweenOperator) {
+
+                "AND"   { $CriteriaObj.SetAndChild( )   }
+                "OR"    { $CriteriaObj.SetOrChild(  )   }
+            
+            }
+
+            $StandardCriteria.AddChildren( $CriteriaObj )
+
+        }
+        
+    }
+    
+    end {
+
+        return $StandardCriteria
+        
+    }
+
+}
+
+function New-IdnRoleChild                                       {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Switch for Identity Child.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Identity",
+        HelpMessage = "Switch to create criteria for an Identity Attribute.")]
+        [switch]$IdentityAttribute,
+    
+        # Switch for Account Child.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Account",
+        HelpMessage = "Switch to create criteria for an Account Attribute.")]
+        [switch]$AccountAttribute,
+    
+        # Switch for Entitlement Child.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Entitlement",
+        HelpMessage = "Switch to create criteria for an Identity Attribute.")]
+        [switch]$EntitlementAttribute,
+
+        # Switch for Entitlement Child.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "OrParent",
+        HelpMessage = "Switch to create Parent group with the Or Operator.")]
+        [switch]$OrParent,
+
+        # Switch for Entitlement Child.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "AndParent",
+        HelpMessage = "Switch to create Parent group with the And Operator.")]
+        [switch]$AndParent,
+
+        # Parameter for Between Groups Operator.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Select the Operator to evaluate the String.",
+        ParameterSetName = "Identity")]
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Select the Operator to evaluate the String.",
+        ParameterSetName = "Account")]
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Select the Operator to evaluate the String.",
+        ParameterSetName = "Entitlement")]
+        [ValidateSet( "EQUALS", "NOT_EQUALS", "CONTAINS", "STARTS_WITH", "ENDS_WITH" )]
+        [string]$Operator,
+
+        # Parameter String criteria.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the string to matcha against the Identity Attribute.",
+        ParameterSetName = "Identity")]
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the string to matcha against the Account Attribute.",
+        ParameterSetName = "Account")]
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the string to matcha against Entitlement name.",
+        ParameterSetName = "Entitlement")]
+        [string]$CriteriaString,
+
+        # Parameter for Property
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Identity",
+        HelpMessage = "Enter the Identity Attribute to match against.")]
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Account",
+        HelpMessage = "Enter the Account Attribute to match against.")]
+        [string]$AttributeName,
+
+        # Parameter for Source ID.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Entitlement",
+        HelpMessage = "Enter the Source ID the Entitlement is from.")]
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Account",
+        HelpMessage = "Enter the Source ID the Account Attribute is from.")]
+        [ValidateLength(32,32)]
+        [string]$SourceID
+        
+    )
+    
+    begin {
+
+        $ChildItem = New-Object -TypeName "RoleCriteriaChildItem"
+
+    }
+    
+    process {
+
+        switch ($PSCmdlet.ParameterSetName) {
+
+            "Account"       { $ChildItem.SetAccountKey(     $Operator , $CriteriaString , $AttributeName , $SourceID    ) }
+            "Identity"      { $ChildItem.SetIdentityKey(    $Operator , $CriteriaString , $AttributeName                ) }
+            "Entitlement"   { $ChildItem.SetEntitlementKey( $Operator , $CriteriaString , $SourceID                     ) }
+            "OrParent"      { $ChildItem.SetOrChild(                                                                    ) }
+            "AndParent"     { $ChildItem.SetAndChild(                                                                   ) }
+        
+        }
+        
+    }
+    
+    end {
+
+        return $ChildItem
+        
+    }
+
 }
 
 <#
