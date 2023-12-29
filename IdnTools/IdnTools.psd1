@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.56'
+    ModuleVersion = '1.57'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -57,11 +57,7 @@
     # RequiredAssemblies = @()
 
     # Script files (.ps1) that are run in the caller's environment prior to importing this module.
-    ScriptsToProcess = @(
-
-       # "IdnSetOrgNames.ps1"
-
-    )
+    # ScriptsToProcess = @()
 
     # Type files (.ps1xml) to be loaded when importing this module
     # TypesToProcess = @()
@@ -84,12 +80,13 @@
         "Initialize-IdnIdentityAttributePatch"          ,
         "Get-IdnProvisioningPoliciesBySource"           ,
         "Set-IdnProvisioningPoliciesBySource"           ,
+        "Update-IdnAccessProfileEntitlments"            ,
+        "Remove-IdnAccessProfileEntitlments"            ,
         "Start-IdnSourceAccountAggregation"             ,
         "Get-IdnAccountAggregationStatus"               ,
         "Remove-IdnAccessProfileFromRole"               ,
-        "Set-IdnAccessProfileEntitlments"               ,
+        "Add-IdnAccessProfileEntitlments"               ,
         "Receive-IdnConfigExportStatus"                 ,
-        "Get-IdnDynamicRoleMembership"                  ,
         "Import-IdnSourceEntitlements"                  ,
         "Invoke-IdnAccountAggregation"                  ,
         "Move-IdnAccountToNewIdentity"                  ,
