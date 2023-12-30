@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 12/28/2023                                                                                                                                                                                |
+ | Last Modified : 12/29/2023                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -57,6 +57,9 @@
  |                                                  |                                                  |                                                  |                                                  |
  | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management | Version: 1.55 - Fixed Get-IdnAccounts problems   | Version: 1.56 - Added Functions and classes for  |
  |                 function set org names.          |                 commands.                        |                 with its Parameters.             |                 building Standard Roles.         |
+ |                                                  |                                                  |                                                  |                                                  |
+ | Version: 1.57 - Add functions to Add, Replace &  |                                                  |                                                  |                                                  |
+ |                 remove Entitlements for APs.     |                                                  |                                                  |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -582,7 +585,7 @@ function Update-IdnConfigSettings                               {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for Production Org Name.
         [Parameter(Mandatory = $true,
@@ -604,7 +607,7 @@ function Update-IdnConfigSettings                               {
         
     )
     
-    begin {
+    begin   {
 
         $Hash   = @{}
         
@@ -621,7 +624,7 @@ function Update-IdnConfigSettings                               {
         
     }
     
-    end {
+    end     {
 
         return Set-Item -Path "env:IdnConfig" -Value $Json -Force 
 
@@ -708,42 +711,6 @@ function Get-IdnToken                                           {
     end     {
 
         return New-Variable -Name $ConfigName -Value $Object -Scope "Global" -Option "ReadOnly" -Force
-
-    }
-
-}
-
-function Get-IdnInactiveUsers                                   {
-
-    [CmdletBinding()]
-
-    param (
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-
-    )
-
-    begin {
-
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "v2/search?limit=2500&query=%28%28attributes.cloudLifecycleState%3Aterm%2A%29%20AND%20%28roleCount%3A%3e0%29%29"
-        
-    }
-
-    process {
-
-        #Call = Invoke-RestMethod -Method Post -Uri $Uri -Headers $Tenant.TenantToken -Body $Json -ContentType "application/json" 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" 
-
-    }
-
-    end {     
-
-        return $Call.identity
 
     }
 
@@ -915,8 +882,9 @@ function Remove-IdnIdentity                                     {
 
         # Parameter for specifying the Id of the account to retrieve.
         [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the Id for the account to search for.")]
-        [string]$Alias,
+        HelpMessage = "Specify the Id for the Identity to Delete.")]
+        [ValidateLength(32,32)]
+        [string]$Id,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -929,13 +897,13 @@ function Remove-IdnIdentity                                     {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "v2/identities/" + $Alias
+        $Uri    = "{0}beta/identities/{1}" -f $Tenant.ModernBaseUri , $Id
                 
     }
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Delete" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-WebRequest -Method "Delete" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri | Select-Object StatusCode
                     
     }
     
@@ -994,6 +962,7 @@ function Get-IdnIdentitySnapShot                                {
 
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Set-IdnIdentity                                        {
 
     [CmdletBinding()]
@@ -1047,6 +1016,7 @@ function Set-IdnIdentity                                        {
 
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Set-IdnIdentityAdminRoles                              {
 
     [CmdletBinding()]
@@ -1275,6 +1245,7 @@ function Get-IdnSourcesById                                     {
 
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Start-IdnSourceAccountAggregation                      {
 
     [CmdletBinding()]
@@ -1433,7 +1404,7 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
     process {
 
-        $Call = Invoke-RestMethod -Method Patch -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonPatch -ContentType "application/json-patch+json"
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonPatch -ContentType "application/json-patch+json"
 
     }
 
@@ -1708,7 +1679,7 @@ function Get-IdnRole                                            {
 
         foreach ($Entry in $Id) {
         
-            $Uri     = $Tenant.ModernBaseUri + "beta/roles/" + $Entry
+            $Uri     = $Tenant.ModernBaseUri + "v3/roles/" + $Entry
             $Current = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
 
             if ($ExpandAccessProfiles) {
@@ -1725,205 +1696,6 @@ function Get-IdnRole                                            {
             }
 
             $Call += $Current
-
-        }
-        
-    }
-    
-    end     {
-
-        return $Call
-        
-    }
-    
-}
-
-function New-IdnRoleOld                                         {
-    
-    [CmdletBinding()]
-
-    param   (
-
-        # Switch for New Role with Identity_Lst
-        [Parameter(Mandatory = $false,
-        HelpMessage=  "Switch to specify the Role uses Membership Type of IDENTITY_LIST.",
-        ParameterSetName = "List")]
-        [switch]$IdentityListRole,
-
-        # Switch for New Role with Identity_Lst
-        [Parameter(Mandatory = $false,
-        HelpMessage=  "Switch to specify the Role uses Membership Type of STANDARD.",
-        ParameterSetName = "Rule")]
-        [switch]$StandardRole,
-
-        # Parameter for entering the new Name.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a Name for the Role you want to create.")]
-        [string]$Name,
-
-        # Parameter for specifying a descrption.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify a Description for the new Role.")]
-        [string]$Description,
-
-        # Parameter for specifying the membership type.
-        <# [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the membership type.  Choose STANDARD to specify a rule, or IDENTITY_LIST for manual assignment.")]
-        [ValidateSet("IDENTITY_LIST","STANDARD")]
-        [string]$MembershipType, #>
-
-        # Parameter for specifying a list of users.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the the Aliases/Names for the User Identities to add to the Role.",
-        ParameterSetName = "List")]
-        [string[]]$IdentityIDs,
-
-        # Parameter help description
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify Membership Criteria with a StandardRoleCriteria object.",
-        ParameterSetName = "Rule")]
-        [StandardRoleCriteria]$MemberShipRule,
-
-        # Parameter for entering Entitlements to assign.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a list of IDs for Entitlements for this Profile to Grant.")]
-        [ValidateLength(32,32)]
-        [string[]]$AccessProfiles,
-        
-        # Parameter for specifying the Profle owner
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the owner of the new Role.")]
-        [ValidateLength(32,32)]
-        [string]$OwnerID,
-
-        # Parameter for specifying the Owner Type.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify what Type of Object the Owner is.  Default is Identity.")]
-        [ValidateSet("ACCOUNT_CORRELATION_CONFIG","ACCESS_PROFILE","ACCESS_REQUEST_APPROVAL","ACCOUNT","APPLICATION","CAMPAIGN"         ,
-        "CAMPAIGN_FILTER","CERTIFICATION","CLUSTER","CONNECTOR_SCHEMA","ENTITLEMENT","GOVERNANCE_GROUP","IDENTITY","IDENTITY_PROFILE"   ,
-        "IDENTITY_REQUEST","LIFECYCLE_STATE","PASSWORD_POLICY","ROLE","RULE","SOD_POLICY","SOURCE","TAG_CATEGORY","TASK_RESULT"         ,
-        "REPORT_RESULT","SOD_VIOLATION","ACCOUNT_ACTIVITY")]
-        [string]$OwnerType = "IDENTITY",
-
-        # Parameter for specifying whether the Role is Enabled or Disabled
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify whether to create this Role as Enabled or Disabled.  Default is set to Enabled.")]
-        [bool]$Enabled = $true,
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-        
-    )
-    
-    begin   {
-
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-
-        $Uri        = $Tenant.ModernBaseUri + "v3/roles/" 
-        $UserList   = @( Get-IdnIdentity        -Id $IdentityIDs      -Instance $Instance -ErrorAction "SilentlyContinue" )
-        $APList     = @( Get-IdnAccessProfile   -Id $AccessProfiles   -Instance $Instance -ErrorAction "SilentlyContinue" )
-        $Proceed    = $true
-        
-        try     {
-
-            $OwnerInfo = Get-IdnIdentity  -Id $OwnerID -Instance $Instance
-
-            if ( $UserList.Count    -lt 1 ) {
-
-                $Proceed    = $false
-                $Reason    += "Unable to find any Identites in the provided list.  Verify the IDs and try again.`n`n"
-    
-            }
-
-            if ( $APList.Count      -lt 1 ) {
-
-                $Proceed    = $false
-                $Reason    += "Unable to find any Access Profiles in the provided list.  Verify the IDs and try again.`n`n"
-    
-            }
-            
-        }        
-
-        catch   {
-
-            $Proceed    = $false
-            $Reason    += "Unable to find the Identity $OwnerID.  Verify this is the correct Alias.`n`n"
-            
-        }
-                
-    }
-    
-    process {
-
-        if ($Proceed) {
-
-            $AccessProfileArray = @()
-            $UserListArray      = @()
-
-            $AccessProfileArray += foreach ($Profile    in $APList      ) {
-                
-                @{
-
-                    id      = $Profile.id
-                    type    = "ACCESS_PROFILE"
-                    name    = $Profile.name
-
-                }
-
-            }
-
-            $UserListArray      += foreach ($User       in $UserList    ) {
-                
-                @{
-
-                    id          = $User.externalId
-                    type        = "IDENTITY"
-                    name        = $User.name
-                    aliasName   = $User.alias
-
-                }
-                
-            }
-
-            $Membership = @{
-
-                type        = $MembershipType
-                identities  = $UserListArray
-
-            }
-        
-            $Object = @{
-
-                name            = $Name
-                description     = $Description
-                owner           = @{
-
-                    type    = "IDENTITY"
-                    id      = $OwnerInfo.id
-
-                }
-
-                accessProfiles  = $AccessProfileArray
-                membership      = $Membership
-                enabled         = $Enabled
-                requestable     = $false
-
-            }
-
-            $Body = ConvertTo-Json -InputObject $Object -Depth 100
-            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
-        
-        }
-        
-        else {
-
-            $Message  = "Refer to the above warning for details.  Critical information is missing or incorrect.  Role has not been created.  "  
-            $Message += "Verify the details provided and try again."
-            Write-Warning $Reason
-            Write-Host "`n$Message `n" -ForegroundColor "Yellow"
 
         }
         
@@ -2120,19 +1892,36 @@ function Get-IdnRoles                                           {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "cc/api/role/list"
+        $Uri    = "{0}v3/roles"     -f $Tenant.ModernBaseUri
+        $First  = "{0}?count=true"  -f $Uri
                 
     }
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken  
+        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken  
+
+        if ($Rest.Content.Length -ge 3) {
+
+            $Total      = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $RolesAll   = New-Object -TypeName "System.Collections.ArrayList"
+            $Begin      = @( ConvertFrom-Json -InputObject $Rest.Content )
+            $RolesAll.AddRange( $Begin )
+
+            if ($Total -gt $Begin.Count) {
+
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 50 -Total $Total
+                $RolesAll.AddRange( $Pages )
+
+            }
+
+        }
         
     }
     
     end     {
 
-        return $Call.items
+        return $RolesAll
         
     }
     
@@ -2147,12 +1936,14 @@ function Update-IdnRoleMembers                                  {
         # Parameter for entering the ID of the Role
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the ID for the Role you're looking for.")]
-        [string]$Id,
+        [ValidateLength(32,32)]
+        [string]$RoleId,
 
         # Parameter for the list of users to add to the Role
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter a list of users to add.")]
-        [string[]]$UsersToAdd,
+        [ValidateLength(32,32)]
+        [string[]]$IdentityIDs,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2165,31 +1956,45 @@ function Update-IdnRoleMembers                                  {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "cc/api/role/update"
+        $Uri    = "{0}v3/roles/{1}" -f $Tenant.ModernBaseUri , $RoleId
                 
     }
     
     process {
 
-        $Object = @{
+        $IdentityList = foreach ($Id in $IdentityIDs) {
+            
+            @{
 
-            id          = $Id
-            selector    = @{
+                id = $id
 
-                aliasList = @(
+            }
+            
+        }
 
-                    $UsersToAdd
+        $Object = @(            
 
-                )
+            [ordered]@{
 
-                type = "IDENTITY_LIST"
+                op      = 'replace'
+                path    = '/membership'
+                value   = [ordered]@{
+
+                    type        = 'IDENTITY_LIST'
+                    identities  = @(
+                        
+                        $IdentityList
+                        
+                    )
+
+                }
 
             }
 
-        }
+        )
 
         $Body = ConvertTo-Json      -Depth  10      -InputObject    $Object
-        $Call = Invoke-RestMethod   -Method Post    -Headers        $Tenant.TenantToken  -Uri $Uri -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken  -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -2229,9 +2034,9 @@ function Get-IdnAccessProfiles                                  {
         
         if ($Rest.Content.Length -ge 3) {
 
-            $Total  = [int32]"$( $Rest.Headers."X-Total-Count" )"
-            $ProfList = New-Object            -TypeName       "System.Collections.ArrayList"
-            $Begin  = @(ConvertFrom-Json    -InputObject    $Rest.Content)
+            $Total      = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $ProfList   = New-Object -TypeName "System.Collections.ArrayList"
+            $Begin      = @(ConvertFrom-Json    -InputObject    $Rest.Content)
             $ProfList.AddRange( $Begin )
 
             if ($Total -gt $Begin.Count) {
@@ -2307,8 +2112,10 @@ function Start-IdnIdentityRefresh                               {
         # Parameter for User's Alias to be refreshed.
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the Alias of the Identity to Refresh")]
-        [string[]]$Alias,
-
+        [ValidateCount(     1   , 250    )]
+        [ValidateLength(    32  , 32     )]
+        [string[]]$Ids,
+<# 
         # Parameter for updating Roles.
         [Parameter(Mandatory = $false,
         HelpMessage = "Bool parameter for updating Roles.")]
@@ -2318,7 +2125,7 @@ function Start-IdnIdentityRefresh                               {
         [Parameter(Mandatory = $false,
         HelpMessage = "Bool parameter for updating Entitlements.")]
         [bool]$RefreshEntitlements = $true,
-
+ #>
         [Parameter(Mandatory = $false,
         HelpMessage = "Specify the Production or SandBox instance to connect to.")]
         [ValidateSet("Production","Sandbox")]
@@ -2328,47 +2135,27 @@ function Start-IdnIdentityRefresh                               {
     
     begin   {
 
-        $Array  = @()
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.LegacyBaseUri + "api/system/refreshIdentities"
+        $Uri    = "{0}beta/identities/process" -f $Tenant.ModernBaseUri
 
     }
     
     process {
 
-        foreach ($User in $Alias) {
-        
-            $Body = [ordered]@{    
-                
-                filter      = "name == ""$User"""    
-                refreshArgs = @{
-                    
-                    synchronizeAttributes   = $true        
-                    promoteAttributes       = $true        
-                    refreshLinks            = $true    
-                    provision               = $ProvisionRoles
-                    correlateEntitlements   = $RefreshEntitlements
-                
-                }
-            
-            } | ConvertTo-Json -Depth 10
+        $Object = [ordered]@{
 
-            $Call   = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
-            $Array += [PSCustomObject]@{
-
-                User        = $User
-                Code        = $Call.StatusCode
-                Description = $Call.StatusDescription
-            
-            }
+            identityIds = $Ids
 
         }
+
+        $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
+        $Call = Invoke-RestMethod   -Method         "Post"  -Uri    $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
 
     }
     
     end     {
 
-        return $Array
+        return $Call
         
     }
 
@@ -2452,6 +2239,7 @@ function Get-IdnPendingTasks                                    {
     
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Get-IdnQueue                                           {
     
     [CmdletBinding()]
@@ -2487,6 +2275,7 @@ function Get-IdnQueue                                           {
     
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Get-IdnJobs                                            {
     
     [CmdletBinding()]
@@ -2568,6 +2357,7 @@ function Set-IdnSource                                          {
 
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Get-IdnRules                                           {
     
     [CmdletBinding()]
@@ -2603,6 +2393,7 @@ function Get-IdnRules                                           {
     
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Get-IdnRule                                            {
     
     [CmdletBinding()]
@@ -2644,6 +2435,7 @@ function Get-IdnRule                                            {
     
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Get-IdnPasswordPolicies                                {
     
     [CmdletBinding()]
@@ -2679,6 +2471,7 @@ function Get-IdnPasswordPolicies                                {
     
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Get-IdnPasswordPolicy                                  {
     
     [CmdletBinding()]
@@ -2720,6 +2513,7 @@ function Get-IdnPasswordPolicy                                  {
     
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function New-IdnPasswordPolicy                                  {
     
     [CmdletBinding()]
@@ -2994,6 +2788,7 @@ function Get-IdnAccountHistory                                  {
 }
 
 # Update Identity Data (Not Working Yet)
+# Last check for V3/Beta was 12/28/23
 function Update-IdnIdentity                                     {
 
     [CmdletBinding()]
@@ -3206,6 +3001,10 @@ function Get-IdnIdentityProfile                                 {
 
     param   (
 
+        # Parameter for Profile ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Identity Profile.")]
+        [ValidateLength(32,32)]
         [string]$Id,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
@@ -3219,7 +3018,7 @@ function Get-IdnIdentityProfile                                 {
     begin   {
         
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "cc/api/profile/get/$Id"
+        $Uri    = "{0}v3/identity-profiles/{1}" -f $Tenant.ModernBaseUri , $Id
 
     }
     
@@ -4456,6 +4255,12 @@ function Search-IdnIdentities                                   {
         HelpMessage = "Specify the number hours to search Account creations for.")]
         [int32]$Hours,
 
+        # Parameter for all Inactive Identities.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "AllInactive",
+        HelpMessage = "Get a list of all Inactive Identities with at least one Role assigned.")]
+        [switch]$AllInactiveIdentities,
+
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
         HelpMessage = "Specify the Production or SandBox instance to connect to.")]
@@ -4487,6 +4292,7 @@ function Search-IdnIdentities                                   {
             'SourceName'            { $SearchStrings += '@accounts(source.name:"'           + $SourceName       + '")'          }
             'LongSourceID'          { $SearchStrings += '@accounts(source.id:"'             + $LongSourceID     + '")'          }
             'Hours'                 { $SearchStrings += '(created:[now-'                    + $Hours            + 'h TO now])'  }
+            'AllInactiveIdentities' { $SearchStrings += '((attributes.cloudLifecycleState:term*) AND (roleCount:>0))'           }
             
         }
 
@@ -4568,18 +4374,21 @@ function Get-IdnEventTriggers                                   {
     
 }
 
-function Set-IdnAccessProfileEntitlments                        {
+function Add-IdnAccessProfileEntitlments                        {
 
     param   (
 
         # Parameter for entering the ID of the Role
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the ID for the Role you're looking for.")]
+        [ValidateLength(32,32)]
         [string]$Id,
 
         # Parameter help description
-        [Parameter(Mandatory=$true)]
-        [string[]]$Entitlements,
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Provide a list of Entitlements to Add by ID.")]
+        [ValidateLength(32,32)]
+        [string[]]$EntitlementIds,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -4591,21 +4400,179 @@ function Set-IdnAccessProfileEntitlments                        {
     
     begin   {
 
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "v2/access-profiles/" + $Id
+        $Object = New-Object            -TypeName "System.Collections.ArrayList"
+        $Access = Get-IdnAccessProfile  -Instance $Instance                         -Id $Id
+        $Tenant = Get-IdnTenantDetails  -Instance $Instance
+        $Uri    = "{0}v3/access-profiles/{1}" -f $Tenant.ModernBaseUri , $Id
         
     }
     
     process {
-        
-        $Object = @{
 
-            entitlements = $Entitlements
+        foreach ($Permission in $EntitlementIds) {
+
+            $Confirm = Get-IdnEntitlement -Id $Permission -Instance $Instance
+
+            if ( $Access.source.id -eq $Confirm.source.id ) {
+
+                $Entry = [ordered]@{
+
+                    op      = "add"
+                    path    = "/entitlements/-"
+                    value   = [ordered]@{
+    
+                        id      = $Confirm.id
+                        type    = "ENTITLEMENT"
+                        name    = $Confirm.name
+    
+                    }
+                        
+                }
+                
+                $Object.Add( $Entry ) | Out-Null
+    
+            }
+
+        }
+        
+        $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
+        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken -Body $Body
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+    
+}
+
+function Update-IdnAccessProfileEntitlments                     {
+
+    param   (
+
+        # Parameter for entering the ID of the Role
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Role you're looking for.")]
+        [ValidateLength(32,32)]
+        [string]$Id,
+
+        # Parameter help description
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Provide a list of Entitlements to Add by ID.")]
+        [ValidateLength(32,32)]
+        [string[]]$EntitlementIds,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Access = Get-IdnAccessProfile -Instance $Instance -Id $Id
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/access-profiles/{1}" -f $Tenant.ModernBaseUri , $Id
+        
+    }
+    
+    process {
+
+        $AddEnts = foreach ($Permission in $EntitlementIds) {
+
+            $Confirm = Get-IdnEntitlement -Id $Permission -Instance $Instance
+
+            if ( $Access.source.id -eq $Confirm.source.id ) {
+
+                [ordered]@{
+
+                    id      = $Confirm.id
+                    type    = "ENTITLEMENT"
+                    name    = $Confirm.name
+
+                }
+
+            }
+
+        }
+        
+        $Object = @(
+
+            [ordered]@{
+
+                op      = "replace"
+                path    = "/entitlements"
+                value   = @(
+
+                    $AddEnts
+
+                )
+
+            }            
+
+        )
+
+        $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
+        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken -Body $Body
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+    
+}
+
+function Remove-IdnAccessProfileEntitlments                     {
+
+    param   (
+
+        # Parameter for entering the ID of the Role
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Role you're looking for.")]
+        [ValidateLength(32,32)]
+        [string]$Id,
+
+        # Parameter help description
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Provide a list of Entitlements to Add by ID.")]
+        [ValidateLength(32,32)]
+        [string[]]$EntitlementIds,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        [ValidateSet("Production","Sandbox")]
+        [string]$Instance = "Production"
+        
+    )
+    
+    begin   {
+
+        $Access = Get-IdnAccessProfile  -Instance $Instance -Id $Id
+        $Object = [System.Collections.ArrayList]@( $Access.entitlements.id )
+        
+    }
+    
+    process {
+
+        foreach ($Permission in $EntitlementIds) {
+
+            if ($Access.entitlements.id -contains $Permission) {
+
+                $Object.Remove( $Permission )
+                
+            }
 
         }
 
-        $Body = ConvertTo-Json -InputObject $Object -Depth 10
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken -Body $Body
+        $Call = Update-IdnAccessProfileEntitlments -Id $Id -EntitlementIds $Object -Instance $Instance
         
     }
     
@@ -4654,72 +4621,6 @@ function Get-IdnIdentityEventHistory                            {
 
         return $Call
         
-    }
-
-}
-
-function Get-IdnDynamicRoleMembership                           {
-
-    [CmdletBinding()]
-    
-    param   (
-    
-        # Parameter for specifying the Id of the account to retrieve.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the Role Id for the account to search for.")]
-        [ValidateLength(32,32)]
-        [string]$RoleLongID,
-        
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
-        
-    )
-    
-    begin   {
-        
-        $Start      = 0
-        $Limit      = 250
-        $TimeStamp  = [int][double]::Parse((Get-Date -UFormat "%s"))
-        $Tenant     = Get-IdnTenantDetails -Instance $Instance
-        $BaseUri    = $Tenant.ModernBaseUri + "cc/api/role/users/" + $RoleLongID + "/?dc=" + $TimeStamp + "&count=true&limit=" + $Limit
-        
-    }
-    
-    process {
-        
-        do {
-
-            try     {
-
-                $Uri    = $BaseUri + "&start=" + $Start
-                $Rest   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
-                $Call  += $Rest.items 
-                $Total  = $Rest.total
-                $PgTtl  = [Math]::Ceiling($Total / $Limit)
-                $Page++
-                Write-Progress -Activity "Page $Page of $PgTtl" -Status "Accounts $($Call.Count) of $Total" -PercentComplete ($Call.Count/$Total*100) -CurrentOperation $Uri
-                $Start += $Limit
-
-            }
-
-            catch   {
-
-                $PSItem.Exception               | Out-Host
-                $PSItem.ErrorDetails.Message    | Out-Host
-
-            }
-
-        } until ($Call.Count -eq $Total)
-
-    }
-    
-    end     {
-    
-        return $Call
-
     }
 
 }
@@ -5167,6 +5068,7 @@ function Get-IdnIdentities                                      {
 
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Reset-IdnSource                                        {
 
     [CmdletBinding()]
@@ -5631,7 +5533,7 @@ function Get-IdnRoleMembership                                  {
     
     process {
         
-        $Uri    = $Tenant.ModernBaseUri + "beta/roles/" + $RoleLongID + "/assigned-identities"
+        $Uri    = $Tenant.ModernBaseUri + "v3/roles/" + $RoleLongID + "/assigned-identities"
         $First  = $Uri + "?count=true"
         $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken -ErrorAction "Stop" 
 
@@ -5932,6 +5834,7 @@ function Add-IdnRoleCriteria                                    {
     
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Import-IdnSourceEntitlements                           {
 
     [CmdletBinding()]
@@ -5993,6 +5896,7 @@ function Import-IdnSourceEntitlements                           {
 
 }
 
+# Last Check for V3/Beta was 12/28/2023
 function Import-IdnSourceAccounts                               {
 
     [CmdletBinding()]
