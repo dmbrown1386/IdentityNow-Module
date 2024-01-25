@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 12/29/2023                                                                                                                                                                                |
+ | Last Modified : 01/14/2024                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -58,8 +58,8 @@
  | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management | Version: 1.55 - Fixed Get-IdnAccounts problems   | Version: 1.56 - Added Functions and classes for  |
  |                 function set org names.          |                 commands.                        |                 with its Parameters.             |                 building Standard Roles.         |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.57 - Add functions to Add, Replace &  |                                                  |                                                  |                                                  |
- |                 remove Entitlements for APs.     |                                                  |                                                  |                                                  |
+ | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   |                                                  |                                                  |
+ |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                                                  |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -4990,11 +4990,6 @@ function Get-IdnIdentities                                      {
 
     param   (
 
-        # Parameter specifying the number of accounts to return.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Enter a comma separated list of attributes to query.")]
-        [string[]]$includeAttributes,
-
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
         HelpMessage = "Specify the Production or SandBox instance to connect to.")]
@@ -5006,63 +5001,37 @@ function Get-IdnIdentities                                      {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "v3/search"
-        $Call           = @()
-        $searchAfter    = ''
-        $queryCount     = 250
-        if ($includeAttributes -notcontains 'name') {$includeAttributes += 'name'}
+        $Uri    = "{0}beta/identities" -f $Tenant.ModernBaseUri
 
     }
 
     process {
 
-        do {
+        $First  = "{0}?count=true" -f $Uri
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken -ErrorAction "Stop" 
 
-            try     {
+        if ( $Rest.Content.Length -ge 3 ) {
 
-                $body = @{
+            $Total  = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $IdLst  = New-Object            -TypeName       "System.Collections.ArrayList"
+            $Begin  = @(ConvertFrom-Json    -InputObject    $Rest.Content)
+            $IdLst.AddRange( $Begin )
 
-                    indices     = @('identities')
+            if ($Total -gt $Begin.Count) {
 
-                    query       = @{
-
-                        query   = '*'
-
-                    }
-
-                    sort        = @('+name')
-
-                    queryResultFilter = @{
-
-                        includes = @($includeAttributes)
-                        
-                    }
-
-                    searchAfter = @($searchAfter)
-
-                } | ConvertTo-Json
-                Write-Progress -Activity "Seach in Progress" -Status "Queried $($queryCount) Identities"
-                $Response = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $body -ContentType 'application/json' -ErrorAction "Stop"
-                $Call += $Response
-                $searchAfter = $Response[-1].name
-                $queryCount += 250
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 250 -Total $Total
+                $IdLst.AddRange( $Pages )
 
             }
 
-            catch   {
+        }
 
-                $PSItem.Exception               | Out-Host
-                $PSItem.ErrorDetails.Message    | Out-Host
-
-            }
-
-        } until ($Response.Count -lt '250')
 
     }
 
     end     {
 
-        return $Call
+        return $IdLst
 
     }
 
