@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 01/14/2024                                                                                                                                                                                |
+ | Last Modified : 01/28/2024                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -58,12 +58,14 @@
  | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management | Version: 1.55 - Fixed Get-IdnAccounts problems   | Version: 1.56 - Added Functions and classes for  |
  |                 function set org names.          |                 commands.                        |                 with its Parameters.             |                 building Standard Roles.         |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   |                                                  |                                                  |
- |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                                                  |                                                  |
- |                                                  |                                                  |                                                  |                                                  |
+ | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   | Version: 1.59 - Added support for Ambassador     |                                                  |
+ |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                 Tenants & Updated how the Tenant |                                                  |
+ |                                                  |                                                  |                 settings variabl works.          |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
 #>
+
+##############################################################################################################################################################################################################
 
 <#
   __________________
@@ -73,17 +75,177 @@
 
 #>
 
+class IdnPAT                                                    {
+    
+    [string         ]$ClientID 
+    [securestring   ]$ClientSecret
+
+    IdnPAT( [string] $ID , [securestring]$Secret ) {
+
+        $this.ClientID      = $ID
+        $this.ClientSecret  = $Secret
+
+    }
+
+}
+
+class IdnBearerToken                                            {
+
+    [ordered]$Bearer = @{}
+
+    IdnBearerToken( $Hash ) {
+
+        $this.Bearer = $Hash
+
+    }
+
+}
+
+class IdnContext                                                {
+
+    [string     ]$token_type
+    [datetime   ]$expires_in
+    [string     ]$scope
+    [string     ]$tenant_id
+    [string     ]$pod
+    [string     ]$strong_auth_supported
+    [string     ]$org
+    [string     ]$identity_id
+    [string     ]$user_name
+    [string     ]$strong_auth
+    [string     ]$jti
+
+}
+
+class IdnProductionTenant                                       {
+
+    [string         ]$ModernBaseUri
+    [string         ]$LegacyBaseUri
+    [IdnPAT         ]$PAT
+    [IdnBearerToken ]$TenantToken
+    [object         ]$Context
+
+
+    IdnProductionTenant( [string]$OrgName )         {
+
+        $this.ModernBaseUri = "https://{0}.api.identitynow.com/"    -f $OrgName
+        $this.LegacyBaseUri = "https://{0}.identitynow.com/"        -f $OrgName
+        
+    }
+
+    SetPAT( [IdnPAT]$PAT )   {
+        
+        $this.PAT = $PAT
+
+    }
+
+    RefreshToken()                                  {
+
+        $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
+        $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
+        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}" -f $this.ModernBaseUri , $this.PAT.ClientID , $Plain
+        $Time   = Get-Date
+        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri 
+        
+        if ($Call) {
+
+            $Bearer = [ordered]@{
+
+                "Authorization" = "Bearer "     + $Call.access_token
+                "cache-control" = "no-cache"
+
+            }
+
+            $Call.expires_in    = $Time.AddSeconds( $Call.expires_in ) 
+            $Info               = $Call | Select-Object "*" -ExcludeProperty "access_token"
+            $this.TenantToken   = [IdnBearerToken]::new( $Bearer )
+            $this.Context       = [IdnContext]$Info
+        
+        }
+
+    }
+    
+}
+
+class IdnAmbassadorTenant                                       {
+
+    [string         ]$ModernBaseUri
+    [string         ]$LegacyBaseUri
+    [IdnPAT         ]$PAT
+    [IdnBearerToken ]$TenantToken
+    [object         ]$Context
+
+
+    IdnAmbassadorTenant( [string]$OrgName )             {
+
+        $this.ModernBaseUri = "https://{0}.api.identitynow-demo.com/"    -f $OrgName
+        $this.LegacyBaseUri = "https://{0}.identitynow-demo.com/"        -f $OrgName
+        
+    }
+
+    SetPAT( [IdnPAT]$PAT )                              {
+
+        $this.PAT = $PAT
+
+    }
+
+    RefreshToken()                                      {
+
+        $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
+        $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
+        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}" -f $this.ModernBaseUri , $this.PAT.ClientID , $Plain
+        $Time   = Get-Date
+        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri 
+        
+        if ($Call) {
+
+            $Bearer = [ordered]@{
+
+                "Authorization" = "Bearer "     + $Call.access_token
+                "cache-control" = "no-cache"
+
+            }
+
+            $Call.expires_in    = $Time.AddSeconds( $Call.expires_in ) 
+            $Info               = $Call | Select-Object "*" -ExcludeProperty "access_token"
+            $this.TenantToken   = [IdnBearerToken]::new( $Bearer )
+            $this.Context       = [IdnContext]$Info
+        
+        }
+
+    }
+    
+}
+ 
 class IdnConnectionDetails                                      {
 
-    [string]$ModernBaseUri
-    [string]$LegacyBaseUri
-    [object]$TenantToken
+    [ValidateSet("Production","Sandbox","Ambassador")]
+    [string                 ]$DefaultInstance = "Production"
+    [IdnProductionTenant    ]$Production
+    [IdnProductionTenant    ]$Sandbox
+    [IdnAmbassadorTenant    ]$Ambassador
+    
+    IdnConnectionDetails() {
 
-    [void]CreateConfig( [string]$MURI , [string]$LURI , [object]$Bear ) {
+        $Names = Import-IdnConfigSettings
+        $Prod = [IdnProductionTenant]::new( $Names.IdnProd      )
+        $Sand = [IdnProductionTenant]::new( $Names.IdnSandbox   )
 
-        $this.ModernBaseUri = $MURI
-        $this.LegacyBaseUri = $LURI
-        $this.TenantToken   = $Bear
+        if ($Names.IdnAmbassador) {
+
+            $Amb = [IdnAmbassadorTenant]::new( $Names.IdnAmbassador )
+            $this.Ambassador = $Amb 
+
+        }
+
+        $this.Production    = $Prod
+        $this.Sandbox       = $Sand
+
+    }
+
+    SetDefaultInstance( [string]$DefaultChoice ) {
+
+        $this.DefaultInstance = $DefaultChoice
 
     }
 
@@ -197,7 +359,6 @@ class RoleCriteriaChildItem                                     {
         $this.key           = $null
         $this.stringValue   = ""
         $this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
-        #this.children      = New-Object -TypeName "RoleCriteriaChildItem"        
         
     }
 
@@ -209,7 +370,6 @@ class RoleCriteriaChildItem                                     {
         $this.key.Add( "type"       , "ACCOUNT"                 )
         $this.key.Add( "property"   , "attribute.$($Poperty)"   )
         $this.key.Add( "sourceId"   , $SourceID                 )
-        #this.children = @()
 
     }
 
@@ -221,7 +381,6 @@ class RoleCriteriaChildItem                                     {
         $this.key.Add( "type"       , "ENTITLEMENT"         )
         $this.key.Add( "property"   , "attribute.memberOf"  )
         $this.key.Add( "sourceId"   , $SourceID             )
-        #this.children = @()
 
     }
 
@@ -233,7 +392,6 @@ class RoleCriteriaChildItem                                     {
         $this.key.Add( "type"       , "IDENTITY"                )
         $this.key.Add( "property"   , "attribute.$($Poperty)"   )
         $this.key.Add( "sourceId"   , ""                        )
-        #this.children = @()
 
     }
 
@@ -381,13 +539,13 @@ function Import-IdnConfigSettings                               {
         
     process {
 
-        $Settings = $env:IdnConfig | ConvertFrom-Json
+        $OrgNames = $env:IdnConfig | ConvertFrom-Json
         
     }
     
-    end {
+    end     {
 
-        return $Settings
+        return $OrgNames
         
     }
 
@@ -401,20 +559,21 @@ function Get-IdnTenantDetails                                   {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $true,
-        HelpMessage = "Specify the Production or Sandbox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
         [string]$Instance
 
     )
 
+    begin   {
+
+        $DetailsForTenant = $IdnApiConnectionConfig.$Instance
+
+    }
+
     process {
 
-        $DetailsForTenant = switch ($Instance) {
-
-            "Production"    { $ProductionIdnConfig  }
-            "Sandbox"       { $SandboxIdnConfig     }
-
-        }
+        Test-IdnToken -Instance $Instance
 
     }
 
@@ -430,7 +589,7 @@ function Invoke-IdnPaging                                       {
     
     [CmdletBinding()]
     
-    param (
+    param   (
         
         # Parameter for the User Token.
         [Parameter(Mandatory = $true,
@@ -499,7 +658,7 @@ function Invoke-IdnPaging                                       {
 
 }
 
-function Invoke-IdnElasticPaging                                {
+function Invoke-IdnElasticSearch                                {
     
     [CmdletBinding()]
     
@@ -563,6 +722,37 @@ function Invoke-IdnElasticPaging                                {
 
 }
 
+function Test-IdnToken                                          {
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
+        [string]$Instance 
+
+    )
+
+    begin   {
+
+        $Tenant = $IdnApiConnectionConfig.$Instance
+        $Now    = Get-Date
+
+    }
+
+    process {
+
+        if ( $Now -gt $Tenant.Context.expires_in ) {
+
+            $Tenant.RefreshToken()
+
+        }
+
+    }
+
+}
+
 <#
   __________________________
  |                          |
@@ -581,28 +771,35 @@ function Invoke-IdnElasticPaging                                {
 
 #>
 
-function Update-IdnConfigSettings                               {
+function Update-IdnOrgNames                                     {
 
-    [CmdletBinding()]
+    [Alias( 'Update-IdnConfigSettings'  )]
+    [CmdletBinding(                     )]
     
     param   (
 
         # Parameter for Production Org Name.
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the Org Name for your Production Tenant")]
-        [ValidateScript( { if ( Test-Connection "$_.api.identitynow.com" -Count 1 ) {$true} else { throw "Could find a tenant with the name $_.  Try again." } } )]
+        [ValidateScript( { if ( Test-Connection "$_.identitynow.com"        -Count 1 ) {$true} else { throw "Failed to ping Tenant with name $_.  Confirm Tenant is up and try again." } } ) ]
         [string]$ProdName,
         
         # Parameter for Sandbox Org Name.
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the Org Name for your Sandbox Tenant")]
-        [ValidateScript( { if ( Test-Connection "$_.api.identitynow.com" -Count 1 ) {$true} else { throw "Could find a tenant with the name $_.  Try again." } } )]
+        [ValidateScript( { if ( Test-Connection "$_.identitynow.com"        -Count 1 ) {$true} else { throw "Failed to ping Tenant with name $_.  Confirm Tenant is up and try again." } } ) ]
         [string]$SandboxName,
+
+        # Parameter for Ambassador Tenant.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Org Name for your Sandbox Tenant")]
+        [ValidateScript( { if ( Test-Connection "$_.identitynow-demo.com"   -Count 1 ) {$true} else { throw "Failed to ping Tenant with name $_.  Confirm Tenant is up and try again." } } ) ]
+        [string]$AmbassadorTenant,
 
         # Parameter for Variable Scrope.
         [Parameter(Mandatory = $true,
-        HelpMessage = "Select the scope to create the variable.  Valid Options are User or Machine.")]
-        [ValidateSet("User","Machine")]
+        HelpMessage = "Select the scope to create the variable.  Valid Options are User, System or LocalOnly.  LocalOnly just updates the Variable in the current session.")]
+        [ValidateSet("User" , "System" , "LocalOnly")]
         [string]$Scope
         
     )
@@ -615,18 +812,95 @@ function Update-IdnConfigSettings                               {
     
     process {
 
-        $Hash.Add( "IdnProd"    , $ProdName     )
-        $Hash.Add( "IdnSandbox" , $SandboxName  )
+        $Hash.Add( "IdnProd"        , $ProdName     )
+        $Hash.Add( "IdnSandbox"     , $SandboxName  )
+
+        if ($AmbassadorTenant) {
+
+            $Hash.Add( "IdnAmbassador" , $AmbassadorTenant )
+
+        }
+
         $Json = ConvertTo-Json -InputObject $Hash
 
-        [System.Environment]::SetEnvironmentVariable( "IdnConfig" , $Json , $Scope )
+        if ( $Scope -ne "LocalOnly" ) {
+        
+            [System.Environment]::SetEnvironmentVariable( "IdnConfig" , $Json , $Scope )
 
+        }
         
     }
     
     end     {
 
-        return Set-Item -Path "env:IdnConfig" -Value $Json -Force 
+        Set-Item -Path "env:IdnConfig" -Value $Json -Force 
+
+    }
+
+}
+
+function Set-IdnOrgNames                                        {
+
+    [Alias( 'Set-IdnConfigSettings' )]
+    [CmdletBinding(                 )]
+    
+    param   (
+
+        # Parameter for Production Org Name.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Org Name for your Production Tenant")]
+        [ValidateScript( { if ( Test-Connection "$_.identitynow.com"        -Count 1 ) {$true} else { throw "Failed to ping Tenant with name $_.  Confirm Tenant is up and try again." } } ) ]
+        [string]$ProdName,
+        
+        # Parameter for Sandbox Org Name.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Org Name for your Sandbox Tenant")]
+        [ValidateScript( { if ( Test-Connection "$_.identitynow.com"        -Count 1 ) {$true} else { throw "Failed to ping Tenant with name $_.  Confirm Tenant is up and try again." } } ) ]
+        [string]$SandboxName,
+
+        # Parameter for Ambassador Tenant.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Org Name for your Sandbox Tenant")]
+        [ValidateScript( { if ( Test-Connection "$_.identitynow-demo.com"   -Count 1 ) {$true} else { throw "Failed to ping Tenant with name $_.  Confirm Tenant is up and try again." } } ) ]
+        [string]$AmbassadorTenant,
+
+        # Parameter for Variable Scrope.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Select the scope to create the variable.  Valid Options are User, System or LocalOnly.  LocalOnly just updates the Variable in the current session.")]
+        [ValidateSet("User" , "System" , "LocalOnly")]
+        [string]$Scope
+        
+    )
+    
+    begin   {
+
+        $OrgNames = Import-IdnConfigSettings
+        
+    }
+    
+    process {
+
+        switch ( $PSBoundParameters.Keys ) {
+
+            "ProdName"          { $OrgNames.IdnProd       = $ProdName         }
+            "SandboxName"       { $OrgNames.IdnSandbox    = $SandboxName      }
+            "AmbassadorTenant"  { $OrgNames.IdnAmbassador = $AmbassadorTenant }
+
+        }
+
+        $Json = ConvertTo-Json -InputObject $OrgNames
+
+        if ( $Scope -ne "LocalOnly" ) {
+        
+            [System.Environment]::SetEnvironmentVariable( "IdnConfig" , $Json , $Scope )
+
+        }
+        
+    }
+    
+    end     {
+
+        Set-Item -Path "env:IdnConfig" -Value $Json -Force 
 
     }
 
@@ -641,7 +915,7 @@ function Get-IdnToken                                           {
         # Parameter for the Client ID of the Personal Access Token
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter the Client ID for your Personal Token here.")]
-        [ValidateScript({ if ( $env:IdnConfig ) {$true} else { throw 'The $env:IdnConfig variable is missing.  Run Update-IdnConfigSettings to create it.' }} )]
+        [ValidateScript( { if ( $env:IdnConfig ) {$true} else { throw 'The $env:IdnConfig variable is missing.  Run Update-IdnConfigSettings to create it.' } } ) ]
         [string]$ClientId,
 
         # Parameter for the Client Secret of the Personal Access Token
@@ -651,66 +925,158 @@ function Get-IdnToken                                           {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
         [string]$Instance = "Production"
 
     )
 
     begin   {
 
-        $Names  = Import-IdnConfigSettings
-        $Object = New-Object -TypeName "IdnConnectionDetails"
-        $Modern = "https://{0}.api.identitynow.com/"
-        $Legacy = "https://{0}.identitynow.com/"
-        $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $ClientSecret )
-        $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID       )
+        if ( -not $IdnApiConnectionConfig ) {
+
+            New-IdnConnectionSettings
+
+        }
+
+        $Tenant  = $IdnApiConnectionConfig.$Instance
 
     }
 
     process {
 
-        switch ($Instance) {
-
-            "Production"   {
-                
-                $BaseUri    = $Modern -f $Names.IdnProd
-                $LegacyUri  = $Legacy -f $Names.IdnProd
-                $ConfigName = "ProductionIdnConfig"
-                
-            }
-            
-            "SandBox"      {
-                
-                $BaseUri    = $Modern -f $Names.IdnSandbox
-                $LegacyUri  = $Legacy -f $Names.IdnSandbox
-                $ConfigName = "SandboxIdnConfig"
-                
-            }
-        
-        }
-
-        $Uri      = $BaseUri + "oauth/token?grant_type=client_credentials&client_id=" + $ClientId + "&client_secret=" + $Plain
-        $Call     = Invoke-RestMethod -Method "Post" -Uri $Uri 
-
-        if ($Call) {
-
-            $Bearer = [ordered]@{
-
-                "Authorization" = "Bearer "     + $Call.access_token
-                "cache-control" = "no-cache"
-
-            }
-
-            $Object.CreateConfig( $BaseUri , $LegacyUri , $Bearer )
-
-        }
+        $Pers = [IdnPAT]::new( $ClientId , $ClientSecret )
+        $Tenant.SetPAT( $Pers )
+        $IdnApiConnectionConfig.DefaultInstance = $Instance
 
     }
 
     end     {
 
-        return New-Variable -Name $ConfigName -Value $Object -Scope "Global" -Option "ReadOnly" -Force
+        $Tenant.RefreshToken()
+
+    }
+
+}
+
+function Update-IdnToken                                        {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+
+    )
+
+    process {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+
+    }
+
+    end     {
+
+        $Tenant.RefreshToken()
+
+    }
+
+}
+
+function New-IdnConnectionSettings                              {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose to make the starting Default Sandbox or Ambassador.")]
+        [ValidateSet( "Sandbox" , "Ambassador" )]
+        [string]$Instance
+
+    )
+
+    process {
+        
+        $Settings = [IdnConnectionDetails]::new()
+    }
+    
+    end     {
+
+        return New-Variable -Name "IdnApiConnectionConfig" -Value $Settings -Scope "Global" -Option "ReadOnly" -Force
+        
+        if ($Instance) {
+        
+            $IdnApiConnectionConfig.DefaultInstance = $Instance
+
+        }
+
+    }
+
+}
+
+function Get-IdnTenantContext                                   {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+
+    )
+
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+
+    }
+
+    process {
+
+        $Context = $Tenant.Context        
+
+    }
+
+    end     {
+
+        return $Context
+
+    }
+
+}
+
+function Set-IdnDefaultTentant                                  {
+
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
+        [string]$Instance 
+
+    )
+
+    process {
+
+        $IdnApiConnectionConfig.DefaultInstance = $Instance
+
+    }
+
+    end     {
+
+        $IdnApiConnectionConfig | Out-Host
 
     }
 
@@ -762,9 +1128,9 @@ function Get-IdnAccounts                                        {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
 
@@ -799,7 +1165,7 @@ function Get-IdnAccounts                                        {
             try     {
 
                 $Uri    = $BaseUri + "&offset=$Offset&count=true"
-                $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
+                $Rest   = Invoke-WebRequest -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ErrorAction "Stop" 
                 $Call  += $Rest.Content -creplace 'ImmutableId','Immutable_Identity' | ConvertFrom-Json
                 $Total  = "$($Rest.Headers.'X-Total-Count')"
                 $PgTtl  = [Math]::Ceiling($Total / $OffsetIncrease)
@@ -842,9 +1208,9 @@ function Get-IdnIdentity                                        {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -860,7 +1226,7 @@ function Get-IdnIdentity                                        {
         foreach ($Account in $Id) {
 
             $Uri   = $Tenant.ModernBaseUri + "beta/identities/" + $Account
-            $Call += Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+            $Call += Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
             
         }
         
@@ -888,9 +1254,9 @@ function Remove-IdnIdentity                                     {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -903,7 +1269,7 @@ function Remove-IdnIdentity                                     {
     
     process {
 
-        $Call = Invoke-WebRequest -Method "Delete" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri | Select-Object StatusCode
+        $Call = Invoke-WebRequest -Method "Delete" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri | Select-Object StatusCode
                     
     }
     
@@ -930,9 +1296,9 @@ function Get-IdnIdentitySnapShot                                {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -948,7 +1314,7 @@ function Get-IdnIdentitySnapShot                                {
         foreach ($Account in $Id) {
 
             $Uri   = $Tenant.ModernBaseUri + "beta/historical-identities/" + $Account
-            $Call += Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+            $Call += Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
             
         }
         
@@ -982,9 +1348,9 @@ function Set-IdnIdentity                                        {
         [string]$LifeCycleState,
 
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1004,7 +1370,7 @@ function Set-IdnIdentity                                        {
 
         } | ConvertTo-Json -Depth 10
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json"
         
     }
     
@@ -1041,9 +1407,9 @@ function Set-IdnIdentityAdminRoles                              {
         [string]$AddOrRemove,
 
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1071,7 +1437,7 @@ function Set-IdnIdentityAdminRoles                              {
 
         } | ConvertTo-Json -Depth 10
 
-        $Call = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json" | Select-Object StatusCode,StatusDescription
+        $Call = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json" | Select-Object StatusCode,StatusDescription
         
     }
     
@@ -1091,9 +1457,9 @@ function Get-IdnSources                                         {
     
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1118,7 +1484,7 @@ function Get-IdnSources                                         {
             try {
 
                 <# $RstUri = $Uri + "limit=1?&offset=$Offset&count=true"
-                $Rest   = Invoke-WebRequest -Method Get -Uri $RstUri -Headers $Tenant.TenantToken -ErrorAction Stop 
+                $Rest   = Invoke-WebRequest -Method Get -Uri $RstUri -Headers $Tenant.TenantToken.Bearer -ErrorAction Stop 
                 $Cnvrt  = $Rest.Content | ConvertFrom-Json
                 $Call  += $Cnvrt
                 $Total  = $Rest.Headers.'X-Total-Count'
@@ -1127,7 +1493,7 @@ function Get-IdnSources                                         {
                 $Offset += $Add 
 
                 $RstUri = $Uri + "?limit=1&offset=1&count=true"
-                $Rest   = Invoke-WebRequest -Method "Get" -Uri $RstUri -Headers $Tenant.TenantToken -ErrorAction "Stop" 
+                $Rest   = Invoke-WebRequest -Method "Get" -Uri $RstUri -Headers $Tenant.TenantToken.Bearer -ErrorAction "Stop" 
                 $Cnvrt  = $Rest.Content | ConvertFrom-Json
                 $Call  += $Cnvrt
                 $Total  = $Rest.Headers.'X-Total-Count'
@@ -1146,7 +1512,7 @@ function Get-IdnSources                                         {
 
         } until ($Call.Count -eq $Total) #>
         
-        $Call = Invoke-RestMethod -Uri $Uri -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Uri $Uri -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json"
 
     }
     
@@ -1172,9 +1538,9 @@ function Get-IdnSourceSchemas                                   {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1187,7 +1553,7 @@ function Get-IdnSourceSchemas                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -1213,9 +1579,9 @@ function Get-IdnSourcesById                                     {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1231,7 +1597,7 @@ function Get-IdnSourcesById                                     {
         foreach ($Source in $SourceId) {
 
             $Uri    = $Tenant.ModernBaseUri + "v3/sources/" + $Source
-            $Call  += Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
+            $Call  += Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken.Bearer
             
         }
         
@@ -1260,9 +1626,9 @@ function Start-IdnSourceAccountAggregation                      {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1275,7 +1641,7 @@ function Start-IdnSourceAccountAggregation                      {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
 
     }
     
@@ -1301,9 +1667,9 @@ function Get-IdnSourceAccountAggregationStatus                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1316,7 +1682,7 @@ function Get-IdnSourceAccountAggregationStatus                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
 
     }
     
@@ -1342,9 +1708,9 @@ function Get-IdnProvisioningPoliciesBySource                    {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1357,7 +1723,7 @@ function Get-IdnProvisioningPoliciesBySource                    {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -1389,9 +1755,9 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
 
@@ -1404,7 +1770,7 @@ function Set-IdnProvisioningPoliciesBySource                    {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonPatch -ContentType "application/json-patch+json"
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $JsonPatch -ContentType "application/json-patch+json"
 
     }
 
@@ -1442,9 +1808,9 @@ function Update-IdnProvisioningPoliciesBySource                 {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1457,7 +1823,7 @@ function Update-IdnProvisioningPoliciesBySource                 {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $JsonUpdate -ContentType "application/json"
         
     }
     
@@ -1495,9 +1861,9 @@ function Remove-IdnProvisioningPoliciesForSource                {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -1510,7 +1876,7 @@ function Remove-IdnProvisioningPoliciesForSource                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Post -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonUpdate -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method Post -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $JsonUpdate -ContentType "application/json"
         
     }
     
@@ -1530,9 +1896,9 @@ function Get-IdnTransformRules                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1545,7 +1911,7 @@ function Get-IdnTransformRules                                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -1571,9 +1937,9 @@ function New-IdnTransformRule                                   {
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1587,7 +1953,7 @@ function New-IdnTransformRule                                   {
     process {
 
         $RuleConfigAsJson   = ConvertTo-Json    -InputObject    $TransformRule  -Depth  100
-        $Call               = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $RuleConfigAsJson -ContentType "application/json"
+        $Call               = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $RuleConfigAsJson -ContentType "application/json"
         
     }
     
@@ -1617,9 +1983,9 @@ function Update-IdnTransformRule                                {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1632,7 +1998,7 @@ function Update-IdnTransformRule                                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken -Body $RuleUpdateJson -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $RuleUpdateJson -ContentType "application/json"
         
     }
     
@@ -1662,9 +2028,9 @@ function Get-IdnRole                                            {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1680,7 +2046,7 @@ function Get-IdnRole                                            {
         foreach ($Entry in $Id) {
         
             $Uri     = $Tenant.ModernBaseUri + "v3/roles/" + $Entry
-            $Current = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+            $Current = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
 
             if ($ExpandAccessProfiles) {
 
@@ -1778,17 +2144,17 @@ function New-IdnRole                                            {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
     begin   {
 
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $OwnerInfo = Get-IdnIdentity  -Id $OwnerID -Instance $Instance
-        $APList     = @( Get-IdnAccessProfile   -Id $AccessProfiles   -Instance $Instance -ErrorAction "SilentlyContinue" )
+        $Tenant     = Get-IdnTenantDetails      -Instance   $Instance
+        $OwnerInfo  = Get-IdnIdentity           -Id         $OwnerID            -Instance $Instance
+        $APList     = @( Get-IdnAccessProfile   -Id         $AccessProfiles     -Instance $Instance -ErrorAction "SilentlyContinue" )
         $Uri        = $Tenant.ModernBaseUri + "v3/roles/" 
         $AccessProfileArray = @()
       
@@ -1812,7 +2178,7 @@ function New-IdnRole                                            {
 
             "List" {
                 
-                $UserList   = @( Get-IdnIdentity        -Id $IdentityIDs      -Instance $Instance -ErrorAction "SilentlyContinue" )
+                $UserList   = @( Get-IdnIdentity -Id $IdentityIDs -Instance $Instance -ErrorAction "SilentlyContinue" )
                 $UserListArray      = @()
                 $UserListArray      += foreach ($User       in $UserList    ) {
             
@@ -1863,7 +2229,7 @@ function New-IdnRole                                            {
         }
 
         $Body = ConvertTo-Json -InputObject $Object -Depth 100
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body
     
     }
     
@@ -1883,9 +2249,9 @@ function Get-IdnRoles                                           {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1899,7 +2265,7 @@ function Get-IdnRoles                                           {
     
     process {
 
-        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken  
+        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer  
 
         if ($Rest.Content.Length -ge 3) {
 
@@ -1910,7 +2276,7 @@ function Get-IdnRoles                                           {
 
             if ($Total -gt $Begin.Count) {
 
-                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 50 -Total $Total
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken.Bearer -StartUri $Uri -OffsetIncrease 50 -Total $Total
                 $RolesAll.AddRange( $Pages )
 
             }
@@ -1947,9 +2313,9 @@ function Update-IdnRoleMembers                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -1994,7 +2360,7 @@ function Update-IdnRoleMembers                                  {
         )
 
         $Body = ConvertTo-Json      -Depth  10      -InputObject    $Object
-        $Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken  -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
+        $Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken.Bearer  -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -2014,9 +2380,9 @@ function Get-IdnAccessProfiles                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2030,7 +2396,7 @@ function Get-IdnAccessProfiles                                  {
     process {
 
         $First = "{0}?count=true" -f $Uri
-        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -ContentType "application/json" -Headers $Tenant.TenantToken 
+        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
         
         if ($Rest.Content.Length -ge 3) {
 
@@ -2041,7 +2407,7 @@ function Get-IdnAccessProfiles                                  {
 
             if ($Total -gt $Begin.Count) {
 
-                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 50 -Total $Total
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken.Bearer -StartUri $Uri -OffsetIncrease 50 -Total $Total
                 $ProfList.AddRange( $Pages )
 
             }
@@ -2071,9 +2437,9 @@ function Get-IdnAccessProfile                                   {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2089,7 +2455,7 @@ function Get-IdnAccessProfile                                   {
         foreach ($IdProfile in $Id) {
 
             $Uri    = $Tenant.ModernBaseUri + "v3/access-profiles/" + $IdProfile
-            $Call  += Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
+            $Call  += Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
             
         }
         
@@ -2115,7 +2481,7 @@ function Start-IdnIdentityRefresh                               {
         [ValidateCount(     1   , 250    )]
         [ValidateLength(    32  , 32     )]
         [string[]]$Ids,
-<# 
+        <# 
         # Parameter for updating Roles.
         [Parameter(Mandatory = $false,
         HelpMessage = "Bool parameter for updating Roles.")]
@@ -2125,11 +2491,11 @@ function Start-IdnIdentityRefresh                               {
         [Parameter(Mandatory = $false,
         HelpMessage = "Bool parameter for updating Entitlements.")]
         [bool]$RefreshEntitlements = $true,
- #>
+        #>
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2149,7 +2515,7 @@ function Start-IdnIdentityRefresh                               {
         }
 
         $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Post"  -Uri    $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Post"  -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body
 
     }
     
@@ -2174,9 +2540,9 @@ function Get-IdnAccountAggregationStatus                        {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2189,7 +2555,7 @@ function Get-IdnAccountAggregationStatus                        {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2212,9 +2578,9 @@ function Get-IdnPendingTasks                                    {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2227,7 +2593,7 @@ function Get-IdnPendingTasks                                    {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2248,9 +2614,9 @@ function Get-IdnQueue                                           {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2263,7 +2629,7 @@ function Get-IdnQueue                                           {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2284,9 +2650,9 @@ function Get-IdnJobs                                            {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2299,7 +2665,7 @@ function Get-IdnJobs                                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2330,9 +2696,9 @@ function Set-IdnSource                                          {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
     
@@ -2345,7 +2711,7 @@ function Set-IdnSource                                          {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $JsonPatchObject
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json-patch+json" -Body $JsonPatchObject
     
     }
     
@@ -2366,9 +2732,9 @@ function Get-IdnRules                                           {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2381,7 +2747,7 @@ function Get-IdnRules                                           {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2408,9 +2774,9 @@ function Get-IdnRule                                            {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2423,7 +2789,7 @@ function Get-IdnRule                                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2444,9 +2810,9 @@ function Get-IdnPasswordPolicies                                {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2459,7 +2825,7 @@ function Get-IdnPasswordPolicies                                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2486,9 +2852,9 @@ function Get-IdnPasswordPolicy                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2501,7 +2867,7 @@ function Get-IdnPasswordPolicy                                  {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -2587,9 +2953,9 @@ function New-IdnPasswordPolicy                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2619,7 +2985,7 @@ function New-IdnPasswordPolicy                                  {
             
         }
 
-        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body
         
     }
     
@@ -2656,9 +3022,9 @@ function Set-IdnSourcePasswordPolicy                            {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2690,7 +3056,7 @@ function Set-IdnSourcePasswordPolicy                            {
         )
 
         $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body
         
     }
     
@@ -2717,9 +3083,9 @@ function Get-IdnAccountActivity                                 {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2733,7 +3099,7 @@ function Get-IdnAccountActivity                                 {
     
     process {
 
-        $Call += Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call += Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2760,9 +3126,9 @@ function Get-IdnAccountHistory                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2775,7 +3141,7 @@ function Get-IdnAccountHistory                                  {
     process {
 
         $Uri    = $Tenant.ModernBaseUri + "v3/historical-identities/" + $Id + "/events"
-        $Call   = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call   = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2804,9 +3170,9 @@ function Update-IdnIdentity                                     {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
 
@@ -2819,7 +3185,7 @@ function Update-IdnIdentity                                     {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -Body $JsonPatch -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $JsonPatch -ContentType "application/json"
 
     }
 
@@ -2844,9 +3210,9 @@ function Get-IdnAccount                                         {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2859,7 +3225,7 @@ function Get-IdnAccount                                         {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2885,9 +3251,9 @@ function Invoke-IdnAccountAggregation                           {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2900,7 +3266,7 @@ function Invoke-IdnAccountAggregation                           {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Post" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Post" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2926,9 +3292,9 @@ function Get-IdnAccountList                                     {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2947,7 +3313,7 @@ function Get-IdnAccountList                                     {
 
         }
 
-        $Call = Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -2967,9 +3333,9 @@ function Get-IdnIdentityProfiles                                {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -2983,7 +3349,7 @@ function Get-IdnIdentityProfiles                                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -3009,9 +3375,9 @@ function Get-IdnIdentityProfile                                 {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3024,7 +3390,7 @@ function Get-IdnIdentityProfile                                 {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -3056,9 +3422,9 @@ function Get-IdnIdentityProfileIdentityAttributes               {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3073,7 +3439,7 @@ function Get-IdnIdentityProfileIdentityAttributes               {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
 
         if ($Call) {
 
@@ -3124,9 +3490,9 @@ function Add-IdnIdentityProfileIdentityAttribute                {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3142,7 +3508,7 @@ function Add-IdnIdentityProfileIdentityAttribute                {
         foreach ($Patch in $Updates) {$Patch.op = 'add'}
         
         $Body = ConvertTo-Json -InputObject $Updates -Depth 10
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $Body
+        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -3174,9 +3540,9 @@ function Update-IdnIdentityProfileIdentityAttribute             {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3192,7 +3558,7 @@ function Update-IdnIdentityProfileIdentityAttribute             {
         foreach ($Patch in $Updates) {$Patch.op = 'replace'}
 
         $Body = ConvertTo-Json      -InputObject    $Updates    -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -3222,9 +3588,9 @@ function Get-IdnLifeCycleState                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3237,7 +3603,7 @@ function Get-IdnLifeCycleState                                  {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -Uri $Uri
         
     }
     
@@ -3262,9 +3628,9 @@ function Get-IdnLifeCycleStates                                 {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3277,7 +3643,7 @@ function Get-IdnLifeCycleStates                                 {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -Uri $Uri
         
     }
     
@@ -3317,9 +3683,9 @@ function New-IdnLifeCycleState                                  {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3342,7 +3708,7 @@ function New-IdnLifeCycleState                                  {
         }
 
         $Body = ConvertTo-Json      -InputObject $Object    -Depth      10
-        $Call = Invoke-RestMethod   -Method     "Post"      -Headers    $Tenant.TenantToken -Uri $Uri -Body $Body -ContentType "application/json"
+        $Call = Invoke-RestMethod   -Method     "Post"      -Headers    $Tenant.TenantToken.Bearer -Uri $Uri -Body $Body -ContentType "application/json"
         
     }
     
@@ -3377,9 +3743,9 @@ function Update-IdnLifeCycleState                               {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
 
@@ -3392,7 +3758,7 @@ function Update-IdnLifeCycleState                               {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Patch" -Headers $Tenant.TenantToken -Uri $Uri -ContentType "application/json-patch+json" -Body $JsonPatch
+        $Call = Invoke-RestMethod -Method "Patch" -Headers $Tenant.TenantToken.Bearer -Uri $Uri -ContentType "application/json-patch+json" -Body $JsonPatch
         
     }
     
@@ -3551,8 +3917,8 @@ function Set-IdnRoleCriteria                                    {
         [Parameter(Mandatory = $false,
         HelpMessage = "Specify the Production or SandBox instance to connect to.",
         ParameterSetName = "Microsoft365Licensing")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3632,7 +3998,7 @@ function Set-IdnRoleCriteria                                    {
 
             $Body = ConvertTo-Json      -Depth  100     -InputObject    $PatchObject
             Write-Host $Uri -ForegroundColor "Cyan"
-            #Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken       -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
+            #Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken.Bearer       -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
 
         }
         
@@ -3695,9 +4061,9 @@ function New-IdnAccessProfileOld                                {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3709,7 +4075,7 @@ function New-IdnAccessProfileOld                                {
 
         try     {
 
-            $OwnerInfo = Get-IdnIdentity  -Id $OwnerAlias -Instance $Instance
+            $OwnerInfo = Get-IdnIdentity -Id $OwnerAlias -Instance $Instance
             
             try {
 
@@ -3815,7 +4181,7 @@ function New-IdnAccessProfileOld                                {
             }
 
             $Body = ConvertTo-Json -InputObject $Object -Depth 100
-            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
+            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json"
 
         }
 
@@ -3893,9 +4259,9 @@ function New-IdnAccessProfile                                   {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -3950,7 +4316,7 @@ function New-IdnAccessProfile                                   {
             }
 
             $Body = ConvertTo-Json -InputObject $Object -Depth 100
-            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json"
+            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json"
 
         }
 
@@ -4022,9 +4388,9 @@ function Get-IdnEntitlements                                    {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -4050,7 +4416,7 @@ function Get-IdnEntitlements                                    {
         $Filter     = $Params -join " $Operator "
         $RootUri    = "{0}beta/entitlements?filters={1}" -f $Tenant.ModernBaseUri , $Filter
         $First      = "{0}&count=true" -f $RootUri
-        $Rest       = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken -ErrorAction "Stop" 
+        $Rest       = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer -ErrorAction "Stop" 
         
         if ( $Rest.Content.Length -ge 3 ) {
 
@@ -4061,7 +4427,7 @@ function Get-IdnEntitlements                                    {
 
             if ($Total -gt $Begin.Count) {
 
-                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $RootUri -OffsetIncrease 250 -Total $Total
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken.Bearer -StartUri $RootUri -OffsetIncrease 250 -Total $Total
                 $EntLst.AddRange( $Pages )
 
             }
@@ -4092,9 +4458,9 @@ function Get-IdnEntitlement                                     {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -4109,7 +4475,7 @@ function Get-IdnEntitlement                                     {
         $Call = foreach ($Item in $id) {
             
             $Uri    = "{0}beta/entitlements/{1}" -f $Tenant.ModernBaseUri , $Item
-            Invoke-RestMethod -Headers $Tenant.TenantToken -Uri $Uri -Method "Get" -ContentType "application/json"
+            Invoke-RestMethod -Headers $Tenant.TenantToken.Bearer -Uri $Uri -Method "Get" -ContentType "application/json"
 
         }
         
@@ -4135,9 +4501,9 @@ function Get-IdnAccountEntitlements                             {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4150,7 +4516,7 @@ function Get-IdnAccountEntitlements                             {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method Get -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
         
     }
     
@@ -4263,9 +4629,9 @@ function Search-IdnIdentities                                   {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
 
@@ -4320,7 +4686,7 @@ function Search-IdnIdentities                                   {
         do {
 
             $Body                = ConvertTo-Json -InputObject $Object -Depth  10
-            $Call                = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body 
+            $Call                = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body 
             $Numb                = [int32]"$($Call.Headers.Item("X-Total-Count"))"
             $ResultStore        += $Call.Content | ConvertFrom-Json
             $Object.searchAfter  = @( $ResultStore | Select-Object -Last 1 -ExpandProperty "id" )
@@ -4347,9 +4713,9 @@ function Get-IdnEventTriggers                                   {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4362,7 +4728,7 @@ function Get-IdnEventTriggers                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -4392,9 +4758,9 @@ function Add-IdnAccessProfileEntitlments                        {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4436,7 +4802,7 @@ function Add-IdnAccessProfileEntitlments                        {
         }
         
         $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken.Bearer -Body $Body
         
     }
     
@@ -4466,9 +4832,9 @@ function Update-IdnAccessProfileEntitlments                     {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4517,7 +4883,7 @@ function Update-IdnAccessProfileEntitlments                     {
         )
 
         $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken.Bearer -Body $Body
         
     }
     
@@ -4547,9 +4913,9 @@ function Remove-IdnAccessProfileEntitlments                     {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4598,9 +4964,9 @@ function Get-IdnIdentityEventHistory                            {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4613,7 +4979,7 @@ function Get-IdnIdentityEventHistory                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken -ContentType "application/json" -Uri $Uri
+        $Call = Invoke-RestMethod -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri
             
     }
     
@@ -4682,12 +5048,12 @@ function Start-IdnConfigExport                                  {
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(ParameterSetName = "Description",
         Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
         [Parameter(ParameterSetName = "AdditionalOptionsForConfigType",
         Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4757,7 +5123,7 @@ function Start-IdnConfigExport                                  {
         }
         
         $Body = ConvertTo-Json      -InputObject    $Table -Depth   10
-        $Call = Invoke-RestMethod   -Method         "Post" -Uri     $Uri -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body
+        $Call = Invoke-RestMethod   -Method         "Post" -Uri     $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body
         
     }
     
@@ -4782,9 +5148,9 @@ function Get-IdnConfigExportStatus                              {
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4797,7 +5163,7 @@ function Get-IdnConfigExportStatus                              {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json"
         
     }
     
@@ -4822,9 +5188,9 @@ function Receive-IdnConfigExportStatus                          {
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4837,7 +5203,7 @@ function Receive-IdnConfigExportStatus                          {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json"
         
     }
     
@@ -4857,9 +5223,9 @@ function Get-IdnConfigObjectDetails                             {
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4872,7 +5238,7 @@ function Get-IdnConfigObjectDetails                             {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken -ContentType "application/json"
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json"
         
     }
     
@@ -4904,9 +5270,9 @@ function Move-IdnAccountToNewIdentity                           {
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4932,7 +5298,7 @@ function Move-IdnAccountToNewIdentity                           {
         )
 
         $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-        $Call = Invoke-WebRequest   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json-patch+json"
+        $Call = Invoke-WebRequest   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json-patch+json"
         
     }
     
@@ -4957,9 +5323,9 @@ function Get-IdnIdentityRoles                                   {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -4972,7 +5338,7 @@ function Get-IdnIdentityRoles                                   {
     process {
     
         $Uri    = $Tenant.ModernBaseUri + "beta/roles/identity/" + $IdentityExternalID + "/roles"
-        $Call   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call   = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -4992,9 +5358,9 @@ function Get-IdnIdentities                                      {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
 
@@ -5008,7 +5374,7 @@ function Get-IdnIdentities                                      {
     process {
 
         $First  = "{0}?count=true" -f $Uri
-        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken -ErrorAction "Stop" 
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer -ErrorAction "Stop" 
 
         if ( $Rest.Content.Length -ge 3 ) {
 
@@ -5019,7 +5385,7 @@ function Get-IdnIdentities                                      {
 
             if ($Total -gt $Begin.Count) {
 
-                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 250 -Total $Total
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken.Bearer -StartUri $Uri -OffsetIncrease 250 -Total $Total
                 $IdLst.AddRange( $Pages )
 
             }
@@ -5052,9 +5418,9 @@ function Reset-IdnSource                                        {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
     
     )
     
@@ -5068,7 +5434,7 @@ function Reset-IdnSource                                        {
 
 
         $Uri    = $Tenant.ModernBaseUri + "cc/api/source/reset/" + $Source
-        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -5091,7 +5457,7 @@ function Get-IdnManagedClusters                                 {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
 
     }
 
@@ -5125,7 +5491,7 @@ function Get-IdnManagedCluster                                  {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
 
     }
 
@@ -5159,7 +5525,7 @@ function Get-IdnManagedClientStatus                             {
 
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
 
     }
 
@@ -5367,9 +5733,9 @@ function Add-IdnAccessProfileToRole                             {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
 
@@ -5392,7 +5758,7 @@ function Add-IdnAccessProfileToRole                             {
             $Array          += $Patch
 
             $Body = ConvertTo-Json      -InputObject    $Array  -Depth  10
-            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json-patch+json"
+            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json-patch+json"
 
         }
 
@@ -5436,9 +5802,9 @@ function Remove-IdnAccessProfileFromRole                        {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
 
@@ -5462,7 +5828,7 @@ function Remove-IdnAccessProfileFromRole                        {
         }
     
         $Body = ConvertTo-Json      -InputObject    @($Remove)  -Depth  10
-        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $Tenant.TenantToken -Body $Body -ContentType "application/json-patch+json"
+        $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json-patch+json"
 
     }
 
@@ -5488,9 +5854,9 @@ function Get-IdnRoleMembership                                  {
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -5504,7 +5870,7 @@ function Get-IdnRoleMembership                                  {
         
         $Uri    = $Tenant.ModernBaseUri + "v3/roles/" + $RoleLongID + "/assigned-identities"
         $First  = $Uri + "?count=true"
-        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken -ErrorAction "Stop" 
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer -ErrorAction "Stop" 
 
         if ($Rest) {
 
@@ -5515,7 +5881,7 @@ function Get-IdnRoleMembership                                  {
 
             if ($Total -gt $Begin.Count) {
 
-                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken -StartUri $Uri -OffsetIncrease 250 -Total $Total
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken.Bearer -StartUri $Uri -OffsetIncrease 250 -Total $Total
                 $Array.AddRange( $Pages )
 
             }
@@ -5579,9 +5945,9 @@ function Search-IdnEvents                                       {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
 
@@ -5626,7 +5992,7 @@ function Search-IdnEvents                                       {
         }
 
         $Body = ConvertTo-Json -InputObject $Object -Depth 10
-        $Rest = Invoke-WebRequest -Method "Post" -Uri $First -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body 
+        $Rest = Invoke-WebRequest -Method "Post" -Uri $First -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body 
 
         if ($Rest.Content.Length -ge 3) {
 
@@ -5638,7 +6004,7 @@ function Search-IdnEvents                                       {
             if ($Total -gt $Begin.Count) {
 
                 $Object.Add( "searchAfter" , @( $Begin | Select-Object -Last 1 -ExpandProperty "id" ) )
-                $Pages = Invoke-IdnElasticPaging -Token $Tenant.TenantToken -StartUri $Uri -ElasticBody $Object -Total $Total -PerPage $Limit
+                $Pages = Invoke-IdnElasticSearch -Token $Tenant.TenantToken.Bearer -StartUri $Uri -ElasticBody $Object -Total $Total -PerPage $Limit
                 $Array.AddRange( $Pages )
 
             }
@@ -5681,9 +6047,9 @@ function Search-IdnCustom                                       {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
 
     )
 
@@ -5716,7 +6082,7 @@ function Search-IdnCustom                                       {
         }
 
         $Body = ConvertTo-Json -InputObject $Object -Depth 10
-        $Rest = Invoke-WebRequest -Method "Post" -Uri $First -Headers $Tenant.TenantToken -ContentType "application/json" -Body $Body 
+        $Rest = Invoke-WebRequest -Method "Post" -Uri $First -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body 
 
         if ($Rest.Content.Length -ge 3) {
 
@@ -5728,7 +6094,7 @@ function Search-IdnCustom                                       {
             if ($Total -gt $Begin.Count) {
 
                 $Object.Add( "searchAfter" , @( $Begin | Select-Object -Last 1 -ExpandProperty "id" ) )
-                $Pages = Invoke-IdnElasticPaging -Token $Tenant.TenantToken -StartUri $Uri -ElasticBody $Object -Total $Total -PerPage $Limit
+                $Pages = Invoke-IdnElasticSearch -Token $Tenant.TenantToken.Bearer -StartUri $Uri -ElasticBody $Object -Total $Total -PerPage $Limit
                 $Array.AddRange( $Pages )
 
             }
@@ -5772,9 +6138,9 @@ function Add-IdnRoleCriteria                                    {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -5791,7 +6157,7 @@ function Add-IdnRoleCriteria                                    {
 
         $Patch.SetCriteria( $StringOperation , $Type , $PrePend , $StringValue )
         $Body = ConvertTo-Json      -InputObject    $Patch  -Depth  10
-        $Call = Invoke-RestMethod   -Uri            $Uri    -Method "Patch" -Headers $Tenant.TenantToken -ContentType "application/json-patch+json" -Body $Body
+        $Call = Invoke-RestMethod   -Uri            $Uri    -Method "Patch" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -5822,9 +6188,9 @@ function Import-IdnSourceEntitlements                           {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -5853,7 +6219,7 @@ function Import-IdnSourceEntitlements                           {
 
         ) -join $LF
 
-        $Rest = Invoke-RestMethod -Uri $Uri -Headers $Tenant.TenantToken -Method "Post" -ContentType $Content -Body $bodyLines -DisableKeepAlive
+        $Rest = Invoke-RestMethod -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Method "Post" -ContentType $Content -Body $bodyLines -DisableKeepAlive
     
     }
     
@@ -5884,9 +6250,9 @@ function Import-IdnSourceAccounts                               {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -5915,7 +6281,7 @@ function Import-IdnSourceAccounts                               {
 
         ) -join $LF
 
-        $Rest = Invoke-RestMethod -Uri $Uri -Headers $Tenant.TenantToken -Method "Post" -ContentType $Content -Body $bodyLines -DisableKeepAlive
+        $Rest = Invoke-RestMethod -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Method "Post" -ContentType $Content -Body $bodyLines -DisableKeepAlive
     
     }
     
@@ -5935,9 +6301,9 @@ function Get-IdnTaskStatusLists                                 {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -5950,7 +6316,7 @@ function Get-IdnTaskStatusLists                                 {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
 
     }
     
@@ -5976,9 +6342,9 @@ function Get-IdnTaskStatus                                      {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
@@ -6017,9 +6383,9 @@ function Complete-IdnTask                                       {
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the Production or SandBox instance to connect to.")]
-        [ValidateSet("Production","Sandbox")]
-        [string]$Instance = "Production"
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
         
     )
     
