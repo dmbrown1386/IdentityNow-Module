@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.58'
+    ModuleVersion = '1.59'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -99,10 +99,10 @@
         "Get-IdnConfigObjectDetails"                    ,
         "Get-IdnManagedClientStatus"                    ,
         "Get-IdnConfigExportStatus"                     ,
+        "New-IdnConnectionSettings"                     ,
         "Set-IdnIdentityAdminRoles"                     ,
         "Start-IdnIdentityRefresh"                      ,
         "Import-IdnSourceAccounts"                      ,
-        "Update-IdnConfigSettings"                      ,
         "Update-IdnLifeCycleState"                      ,
         "Get-IdnIdentityProfiles"                       ,
         "Get-IdnIdentitySnapShot"                       ,
@@ -122,6 +122,7 @@
         "Get-IdnTransformRules"                         ,
         "New-IdnLifeCycleState"                         ,
         "New-IdnPasswordPolicy"                         ,
+        "Set-IdnDefaultTentant"                         ,
         "Start-IdnConfigExport"                         ,
         "Update-IdnRoleMembers"                         ,
         "Get-IdnAccessProfile"                          ,
@@ -131,6 +132,7 @@
         "Get-IdnSourceSchemas"                          ,
         "New-IdnAccessProfile"                          ,
         "New-IdnTransformRule"                          ,
+        "Get-IdnTenantContext"                          ,
         "Search-IdnIdentities"                          ,
         "Add-IdnRoleCriteria"                           ,
         "Get-IdnEntitlements"                           ,
@@ -140,6 +142,7 @@
         "Get-IdnAccountList"                            ,
         "Get-IdnEntitlement"                            ,
         "Get-IdnSourcesById"                            ,
+        "Update-IdnOrgNames"                            ,
         "Remove-IdnIdentity"                            ,
         #Update-IdnIdentity"                            ,
         "Get-IdnTaskStatus"                             ,
@@ -149,7 +152,9 @@
         "Complete-IdnTask"                              ,
         "Search-IdnEvents"                              ,
         "Get-IdnAccounts"                               ,
+        "Update-IdnToken"                               ,
         "Get-IdnIdentity"                               ,
+        "Set-IdnOrgNames"                               ,
         "Reset-IdnSource"                               ,
         "Set-IdnIdentity"                               ,
         "Get-IdnAccount"                                ,
@@ -173,7 +178,12 @@
     VariablesToExport = '*'
 
     # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
-    AliasesToExport = @()
+    AliasesToExport = @(
+
+        "Set-IdnConfigSettings"     ,
+        "Update-IdnConfigSettings"
+    
+    )
 
     # DSC resources to export from this module
     # DscResourcesToExport = @()
