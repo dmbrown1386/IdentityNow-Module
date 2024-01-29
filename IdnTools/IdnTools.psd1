@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.59'
+    ModuleVersion = '1.60'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
