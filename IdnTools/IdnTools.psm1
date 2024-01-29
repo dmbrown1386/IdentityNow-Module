@@ -58,8 +58,8 @@
  | Version: 1.53 - Removed Import script & added a  | Version: 1.54 - Added Import and Task management | Version: 1.55 - Fixed Get-IdnAccounts problems   | Version: 1.56 - Added Functions and classes for  |
  |                 function set org names.          |                 commands.                        |                 with its Parameters.             |                 building Standard Roles.         |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   | Version: 1.59 - Added support for Ambassador     |                                                  |
- |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                 Tenants & Updated how the Tenant |                                                  |
+ | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   | Version: 1.59 - Added support for Ambassador     | Version: 1.60 - Added Filter support for APs,    |
+ |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                 Tenants & Updated how the Tenant |                 Roles and Sources.               |
  |                                                  |                                                  |                 settings variabl works.          |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -1455,6 +1455,71 @@ function Get-IdnSources                                         {
     
     param   (
     
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the complete name to search for.")]
+        [string]$Name,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Status to search for.")]
+        [string]$Status,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Connection Type to search for.")]
+        [string]$ConnectionType,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Connector Name to search for.")]
+        [string]$ConnectorName,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Owner's ID.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$OwnedBy,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Search if Source is Authorative or not.")]
+        [ValidateSet( "true" , "false" )]
+        [string]$IsAuthoritative,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the complete name to search for.")]
+        [ValidateSet( "true" , "false" )]
+        [string]$IsHealthy,
+
+        # Parameter for Filter Operator.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Filter Operator. Will only apply to criteria using 'friendly' strings.  Default is 'and'.")]
+        [ValidateSet("eq" , "sw")]
+        [string]$Operator = "eq",
+
+        # Parameter for Filter Operator.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Filter Composite Operator.  Default is 'and'.")]
+        [ValidateSet("and","or")]
+        [string]$CompositeOperator = "and",
+
+        # Parameter for entering a Custom Filter.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Custom",
+        HelpMessage = "Enter a Custom Filter to search Sources for.")]
+        [string]$CustomFilter,
+
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
         HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
@@ -1466,59 +1531,53 @@ function Get-IdnSources                                         {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "v3/sources"
+        $Params = @()
         
     }
     
     process {
 
-        <# do {
+        switch ( $PSBoundParameters.Keys ) {
 
-            In Beging BLOCK:
-
-                    $Offset = 0
-                    $Page   = 0
-                    $Add    = 1
-                    $Call   = @()
-
-            try {
-
-                <# $RstUri = $Uri + "limit=1?&offset=$Offset&count=true"
-                $Rest   = Invoke-WebRequest -Method Get -Uri $RstUri -Headers $Tenant.TenantToken.Bearer -ErrorAction Stop 
-                $Cnvrt  = $Rest.Content | ConvertFrom-Json
-                $Call  += $Cnvrt
-                $Total  = $Rest.Headers.'X-Total-Count'
-                $PgTtl  = [Math]::Ceiling($Total / $Add)
-                $Page++
-                $Offset += $Add 
-
-                $RstUri = $Uri + "?limit=1&offset=1&count=true"
-                $Rest   = Invoke-WebRequest -Method "Get" -Uri $RstUri -Headers $Tenant.TenantToken.Bearer -ErrorAction "Stop" 
-                $Cnvrt  = $Rest.Content | ConvertFrom-Json
-                $Call  += $Cnvrt
-                $Total  = $Rest.Headers.'X-Total-Count'
-                $Offset += $Add
-                Write-Progress -Activity "$($Call.Count) of $Total." -PercentComplete ($Call.Count / $Total * 100)
-                Write-Host $RstUri -ForegroundColor Cyan 
-
-            }
-
-            catch {
-
-                $PSItem.Exception               | Out-Host
-                $PSItem.ErrorDetails.Message    | Out-Host
-
-            }
-
-        } until ($Call.Count -eq $Total) #>
+            "Name"              { $Params += 'name {0} "{1}"'           -f $Operator , $Name            }
+            "Status"            { $Params += 'status {0} "{1}"'         -f $Operator , $Status          }   
+            "ConnectionType"    { $Params += 'connectionType {0} "{1}"' -f $Operator , $ConnectionType  }           
+            "ConnectorName"     { $Params += 'connectorName {0} "{1}"'  -f $Operator , $ConnectorName   }       
+            "IsAuthoritative"   { $Params += 'authoritative eq {0}'     -f $IsAuthoritative             }           
+            "OwnedBy"           { $Params += 'owner.id eq "{0}"'        -f $OwnedBy                     }
+            "IsHealthy"         { $Params += 'healthy eq "{0}"'         -f $IsHealthy                   }
+            "CustomFilter"      { $Params += '{0}'                      -f $CustomFilter                }
         
-        $Call = Invoke-RestMethod -Uri $Uri -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json"
+        }
+
+        $Filter = $Params -join " $CompositeOperator "
+        $Uri    = "{0}v3/sources?filters={1}"    -f $Tenant.ModernBaseUri , $Filter
+        $First  = "{0}&count=true"              -f $Uri
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer  
+
+        if ($Rest.Content.Length -ge 3) {
+
+            $Total      = [int32]"$( $Rest.Headers."X-Total-Count" )"
+            $SrcesAll   = New-Object -TypeName "System.Collections.ArrayList"
+            $Begin      = @( ConvertFrom-Json -InputObject $Rest.Content )
+            $SrcesAll.AddRange( $Begin )
+
+            if ($Total -gt $Begin.Count) {
+
+                $Pages = Invoke-IdnPaging -Token $Tenant.TenantToken.Bearer -StartUri $Uri -OffsetIncrease 250 -Total $Total
+                $SrcesAll.AddRange( $Pages )
+
+            }
+
+        }
+        
+        #Call = Invoke-RestMethod -Uri $Uri -Method "Get" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json"
 
     }
     
     end     {
 
-        return $Call
+        return $SrcesAll
         
     }
 
@@ -2247,6 +2306,45 @@ function Get-IdnRoles                                           {
 
     param   (
 
+        # Parameter for Starting Name
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter a string to search the start of the Name for.")]
+        [string]$NameStartsWith,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the complete name to search for.")]
+        [string]$NameIs,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Owner's ID.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$OwnedBy,
+
+        # Parameter for entering a Custom Filter.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Search by whether a Role is requestable or not.")]
+        [ValidateSet("true" , "false")]
+        [string]$Requestable,
+
+        # Parameter for Filter Operator.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Filter Operator.  Default is 'and'.")]
+        [ValidateSet("and","or")]
+        [string]$CompositeOperator = "and",
+
+        # Parameter for entering a Custom Filter.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Custom",
+        HelpMessage = "Enter a Custom Filter to search Roles for.")]
+        [string]$CustomFilter,
+
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
         HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
@@ -2258,14 +2356,26 @@ function Get-IdnRoles                                           {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = "{0}v3/roles"     -f $Tenant.ModernBaseUri
-        $First  = "{0}?count=true"  -f $Uri
+        $Params = @()
                 
     }
     
     process {
 
-        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer  
+        switch ( $PSBoundParameters.Keys ) {
+
+            "NameStartsWith"    { $Params += 'name sw "{0}"'        -f $NameStartsWith  }
+            "NameIs"            { $Params += 'name eq "{0}"'        -f $NameIs          }
+            "OwnedBy"           { $Params += 'owner.id eq "{0}"'    -f $OwnedBy         }
+            "Requestable"       { $Params += 'requestable eq {0}'   -f $Requestable     }
+            "CustomFilter"      { $Params += '{0}'                  -f $CustomFilter    }
+        
+        }
+
+        $Filter = $Params -join " $CompositeOperator "
+        $Uri    = "{0}v3/roles?filters={1}" -f $Tenant.ModernBaseUri , $Filter
+        $First  = "{0}&count=true"  -f $Uri
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer  
 
         if ($Rest.Content.Length -ge 3) {
 
@@ -2378,6 +2488,45 @@ function Get-IdnAccessProfiles                                  {
 
     param   (
 
+        # Parameter for Starting Name
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter a string to search the start of the Name for.")]
+        [string]$NameStartsWith,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the complete name to search for.")]
+        [string]$NameIs,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Source ID.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$SourceID,
+
+        # Parameter for name equels.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Owner's ID.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$OwnedBy,
+
+        # Parameter for Filter Operator.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "Staged",
+        HelpMessage = "Enter the Filter Operator.  Default is 'and'.")]
+        [ValidateSet("and","or")]
+        [string]$CompositeOperator = "and",
+
+        # Parameter for entering a Custom Filter.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Custom",
+        HelpMessage = "Enter a Custom Filter to search Roles for.")]
+        [string]$CustomFilter,
+
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
         HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
@@ -2389,14 +2538,27 @@ function Get-IdnAccessProfiles                                  {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = "{0}v3/access-profiles/" -f $Tenant.ModernBaseUri
+        $Params = @()
         
     }
     
     process {
 
-        $First = "{0}?count=true" -f $Uri
-        $Rest = Invoke-WebRequest -Method "Get" -Uri $First -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
+        switch ( $PSBoundParameters.Keys ) {
+
+            "NameStartsWith"    { $Params += 'name sw "{0}"'        -f $NameStartsWith  }
+            "NameIs"            { $Params += 'name eq "{0}"'        -f $NameIs          }
+            "OwnedBy"           { $Params += 'owner.id eq "{0}"'    -f $OwnedBy         }
+            "SourceID"          { $Params += 'source.id eq "{0}"'   -f $SourceID        }
+            "Requestable"       { $Params += 'requestable eq {0}'   -f $Requestable     }
+            "CustomFilter"      { $Params += '{0}'                  -f $CustomFilter    }
+        
+        }
+
+        $Filter = $Params -join " $CompositeOperator "
+        $Uri    = "{0}v3/access-profiles?filters={1}" -f $Tenant.ModernBaseUri , $Filter
+        $First  = "{0}&count=true" -f $Uri
+        $Rest   = Invoke-WebRequest -Method "Get" -Uri $First -ContentType "application/json" -Headers $Tenant.TenantToken.Bearer 
         
         if ($Rest.Content.Length -ge 3) {
 
@@ -4372,7 +4534,7 @@ function Get-IdnEntitlements                                    {
         ParameterSetName = "Staged",
         HelpMessage = "Enter the Filter Operator.  Default is 'and'.")]
         [ValidateSet("and","or")]
-        [string]$Operator = "and",
+        [string]$CompositeOperator = "and",
 
         # Parameter for entering a Custom Filter.
         [Parameter(Mandatory = $true,
@@ -4413,9 +4575,9 @@ function Get-IdnEntitlements                                    {
 
         }
 
-        $Filter     = $Params -join " $Operator "
-        $RootUri    = "{0}beta/entitlements?filters={1}" -f $Tenant.ModernBaseUri , $Filter
-        $First      = "{0}&count=true" -f $RootUri
+        $Filter     = $Params -join " $CompositeOperator "
+        $RootUri    = "{0}beta/entitlements?filters={1}"    -f $Tenant.ModernBaseUri , $Filter
+        $First      = "{0}&count=true"                      -f $RootUri
         $Rest       = Invoke-WebRequest -Method "Get" -Uri $First -Headers $Tenant.TenantToken.Bearer -ErrorAction "Stop" 
         
         if ( $Rest.Content.Length -ge 3 ) {
