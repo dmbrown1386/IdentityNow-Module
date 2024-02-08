@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.60'
+    ModuleVersion = '1.61'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -72,6 +72,7 @@
     FunctionsToExport = @(
 
         "Update-IdnIdentityProfileIdentityAttribute"    ,
+        "New-IdnAccessProfileProvisioningCriteria"      ,
         "Get-IdnIdentityProfileIdentityAttributes"      ,
         "Add-IdnIdentityProfileIdentityAttribute"       ,
         "Remove-IdnProvisioningPoliciesForSource"       ,
@@ -84,6 +85,7 @@
         "Remove-IdnAccessProfileEntitlments"            ,
         "Start-IdnSourceAccountAggregation"             ,
         "Get-IdnAccountAggregationStatus"               ,
+        "Start-IdnEntitlementAggregation"               ,
         "Remove-IdnAccessProfileFromRole"               ,
         "Add-IdnAccessProfileEntitlments"               ,
         "Receive-IdnConfigExportStatus"                 ,
@@ -93,6 +95,7 @@
         "Get-IdnIdentityEventHistory"                   ,
         "Initialize-IdnTransformRule"                   ,
         "Set-IdnSourcePasswordPolicy"                   ,
+        "Start-IdnAccountAggregation"                   ,
         "Write-IdnLifeCycleJsonPatch"                   ,
         "Add-IdnAccessProfileToRole"                    ,
         "Get-IdnAccountEntitlements"                    ,
