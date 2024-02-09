@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 02/08/2024                                                                                                                                                                                |
+ | Last Modified : 02/09/2024                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -61,8 +61,9 @@
  | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   | Version: 1.59 - Added support for Ambassador     | Version: 1.60 - Added Filter support for APs,    |
  |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                 Tenants & Updated how the Tenant |                 Roles and Sources.               |
  |                                                  |                                                  |                 settings variabl works.          |                                                  |
- | Version: 1.61 - Added Account & Entitlement      |                                                  |                                                  |                                                  |
- |                 aggregation cmdlts & Classes for |                                                  |                                                  |                                                  |
+ |                                                  |                                                  |                                                  |                                                  |
+ | Version: 1.61 - Added Account & Entitlement      | Version: 1.62 - Added support for Role Criteria  |                                                  |                                                  |
+ |                 aggregation cmdlts & Classes for |                 in Update function.              |                                                  |                                                  |
  |                 Provisioning Criteria on APs.    |                                                  |                                                  |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
@@ -95,7 +96,7 @@ class IdnPAT                                                    {
 
 class IdnBearerToken                                            {
 
-    [ordered]$Bearer = @{}
+    [hashtable]$Bearer = @{}
 
     IdnBearerToken( $Hash ) {
 
@@ -130,20 +131,20 @@ class IdnProductionTenant                                       {
     [object         ]$Context
 
 
-    IdnProductionTenant( [string]$OrgName )         {
+    IdnProductionTenant(    [string]$OrgName    ) {
 
         $this.ModernBaseUri = "https://{0}.api.identitynow.com/"    -f $OrgName
         $this.LegacyBaseUri = "https://{0}.identitynow.com/"        -f $OrgName
         
     }
 
-    SetPAT( [IdnPAT]$PAT )   {
+    SetPAT(                 [IdnPAT]$PAT        ) {
         
         $this.PAT = $PAT
 
     }
 
-    RefreshToken()                                  {
+    RefreshToken(                               ) {
 
         $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
         $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
@@ -162,8 +163,8 @@ class IdnProductionTenant                                       {
 
             $Call.expires_in    = $Time.AddSeconds( $Call.expires_in ) 
             $Info               = $Call | Select-Object "*" -ExcludeProperty "access_token"
-            $this.TenantToken   = [IdnBearerToken]::new( $Bearer )
-            $this.Context       = [IdnContext]$Info
+            $this.TenantToken   = [IdnBearerToken   ]::new( $Bearer )
+            $this.Context       = [IdnContext       ]$Info
         
         }
 
@@ -180,20 +181,20 @@ class IdnAmbassadorTenant                                       {
     [object         ]$Context
 
 
-    IdnAmbassadorTenant( [string]$OrgName )             {
+    IdnAmbassadorTenant(    [string]$OrgName    ) {
 
         $this.ModernBaseUri = "https://{0}.api.identitynow-demo.com/"    -f $OrgName
         $this.LegacyBaseUri = "https://{0}.identitynow-demo.com/"        -f $OrgName
         
     }
 
-    SetPAT( [IdnPAT]$PAT )                              {
+    SetPAT(                 [IdnPAT]$PAT        ) {
 
         $this.PAT = $PAT
 
     }
 
-    RefreshToken()                                      {
+    RefreshToken(                               ) {
 
         $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
         $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
@@ -212,8 +213,8 @@ class IdnAmbassadorTenant                                       {
 
             $Call.expires_in    = $Time.AddSeconds( $Call.expires_in ) 
             $Info               = $Call | Select-Object "*" -ExcludeProperty "access_token"
-            $this.TenantToken   = [IdnBearerToken]::new( $Bearer )
-            $this.Context       = [IdnContext]$Info
+            $this.TenantToken   = [IdnBearerToken   ]::new( $Bearer )
+            $this.Context       = [IdnContext       ]$Info
         
         }
 
@@ -229,7 +230,7 @@ class IdnConnectionDetails                                      {
     [IdnProductionTenant    ]$Sandbox
     [IdnAmbassadorTenant    ]$Ambassador
     
-    IdnConnectionDetails() {
+    IdnConnectionDetails(                       ) {
 
         $Names = Import-IdnConfigSettings
         $Prod = [IdnProductionTenant]::new( $Names.IdnProd      )
@@ -247,7 +248,7 @@ class IdnConnectionDetails                                      {
 
     }
 
-    SetDefaultInstance( [string]$DefaultChoice ) {
+    SetDefaultInstance( [string]$DefaultChoice  ) {
 
         $this.DefaultInstance = $DefaultChoice
 
@@ -266,13 +267,15 @@ class IdnTransformRuleBase                                      {
 class IdnIdentityAttributePatchNewLogic                         {
 
     [ValidateSet( "add" , "remove" , "replace" , "move" , "copy" , "test" )][string]$op
-    [string]$path
-    [hashtable]$value = @{
+    [string     ]$path
+    [hashtable  ]$value = @{
 
         identityAttributeName   = ""
         transformDefinition     = @{
+
             type        = ""
             attributes  = @{}
+        
         }
 
     }
@@ -330,7 +333,6 @@ class RoleCriteriaChildItem                                     {
         $this.operation     = 'AND'
         $this.key           = $null
         $this.stringValue   = ""
-        #this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
 
     }
 
@@ -339,7 +341,6 @@ class RoleCriteriaChildItem                                     {
         $this.operation     = 'OR'
         $this.key           = $null
         $this.stringValue   = ""
-        #this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
         
     }
 
@@ -2184,6 +2185,52 @@ function Get-IdnRole                                            {
     
 }
 
+function Get-IdnRoleMembershipCriteria                          {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for entering the ID of the Role
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Role you're looking for.")]
+        [string]$Id,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/roles/{1}" -f $Tenant.ModernBaseUri , $Id
+                
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+
+        if ($Call) {
+
+            $Rule = [StandardRoleCriteria]$Call.membership
+
+        }
+        
+    }
+    
+    end     {
+
+        return $Rule
+        
+    }
+    
+}
+
 function New-IdnRole                                            {
     
     [CmdletBinding()]
@@ -2467,9 +2514,17 @@ function Update-IdnRoleMembers                                  {
 
         # Parameter for the list of users to add to the Role
         [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a list of users to add.")]
+        HelpMessage = "Enter a list of users to add.",
+        ParameterSetName = "IdenityList")]
         [ValidateLength(32,32)]
         [string[]]$IdentityIDs,
+
+        # Parameter for new Criteria
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a new set of Standard Role Criteria.",
+        ParameterSetName = "Standard")]
+        [ValidateScript( { if ($_.GetType().Name -eq 'StandardRoleCriteria' ) { $true } else { throw "The Type of $($_.GetType().Name) needs to be 'StandardRoleCriteria'." } } ) ]
+        [object]$NewCriteria,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2488,36 +2543,60 @@ function Update-IdnRoleMembers                                  {
     
     process {
 
-        $IdentityList = foreach ($Id in $IdentityIDs) {
-            
-            @{
+        switch ( $PSCmdlet.ParameterSetName ) {
 
-                id = $id
-
-            }
-            
-        }
-
-        $Object = @(            
-
-            [ordered]@{
-
-                op      = 'replace'
-                path    = '/membership'
-                value   = [ordered]@{
-
-                    type        = 'IDENTITY_LIST'
-                    identities  = @(
+            "IdenityList"   {
                         
-                        $IdentityList
-                        
-                    )
+                $IdentityList = foreach ($Id in $IdentityIDs) {
+                    
+                    @{
 
+                        id = $id
+
+                    }
+                    
                 }
 
+                $Object = @(
+
+                    [ordered]@{
+
+                        op      = 'replace'
+                        path    = '/membership'
+                        value   = [ordered]@{
+
+                            type        = 'IDENTITY_LIST'
+                            identities  = @(
+                                
+                                $IdentityList
+                                
+                            )
+
+                        }
+
+                    }
+
+                )
+
             }
 
-        )
+            "Standard"      {
+
+                $Object = @(
+
+                    [ordered]@{
+
+                        op      = 'replace'
+                        path    = '/membership'
+                        value   = $NewCriteria
+                        
+                    }
+
+                )
+
+            }
+
+        }
 
         $Body = ConvertTo-Json      -Depth  10      -InputObject    $Object
         $Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken.Bearer  -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
@@ -6970,6 +7049,27 @@ function Start-IdnAccountAggregation                            {
     end {
 
         return $Call
+        
+    }
+
+}
+
+function ConvertTo-IdnStandardRoleCriteria                      {
+    
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Role Criteria
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Standard Role Criteria.")]
+        [StandardRoleCriteria]$RoleCriteria
+        
+    )
+        
+    end {
+
+        return [StandardRoleCriteria]$RoleCriteria
         
     }
 
