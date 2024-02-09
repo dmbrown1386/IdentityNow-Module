@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 01/28/2024                                                                                                                                                                                |
+ | Last Modified : 02/08/2024                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -61,6 +61,10 @@
  | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   | Version: 1.59 - Added support for Ambassador     | Version: 1.60 - Added Filter support for APs,    |
  |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                 Tenants & Updated how the Tenant |                 Roles and Sources.               |
  |                                                  |                                                  |                 settings variabl works.          |                                                  |
+ | Version: 1.61 - Added Account & Entitlement      |                                                  |                                                  |                                                  |
+ |                 aggregation cmdlts & Classes for |                                                  |                                                  |                                                  |
+ |                 Provisioning Criteria on APs.    |                                                  |                                                  |                                                  |
+ |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
 #>
@@ -313,6 +317,82 @@ class IdnRolePatch                                              {
 
 }
 
+class RoleCriteriaChildItem                                     {
+    
+    [ValidateSet( "EQUALS", "NOT_EQUALS", "CONTAINS", "STARTS_WITH", "ENDS_WITH", "AND", "OR" )]
+    [string                 ]$operation
+    [PSCustomObject         ]$key
+    [string                 ]$stringValue
+    [RoleCriteriaChildItem[]]$children     #= @()
+
+    [void]SetAndChild(                                                      ) {
+
+        $this.operation     = 'AND'
+        $this.key           = $null
+        $this.stringValue   = ""
+        #this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
+
+    }
+
+    [void]SetOrChild(                                                       ) {
+
+        $this.operation     = 'OR'
+        $this.key           = $null
+        $this.stringValue   = ""
+        #this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
+        
+    }
+
+    [void]SetAccountKey(        $Ops    , $StringVal , $Poperty , $SourceID ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = [PSCustomObject]@{
+
+            type        = "ACCOUNT"                 
+            property    = "attribute.$($Poperty)" 
+            sourceId    = $SourceID                 
+
+        }
+
+    }
+
+    [void]SetEntitlementKey(    $Ops    , $StringVal , $SourceID            ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = [PSCustomObject]@{
+
+            type        = "ENTITLEMENT"         
+            property    = "attribute.memberOf"
+            sourceId    = $SourceID             
+
+        }
+
+    }
+
+    [void]SetIdentityKey(       $Ops    , $StringVal , $Poperty             ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = [PSCustomObject]@{
+
+            type        = "IDENTITY"                
+            property    = "attribute.$($Poperty)" 
+            sourceId    = ""                        
+
+        }
+
+    }
+
+    [void]AddNestedChild(       $Child                                      ) {
+
+        $this.children += $Child
+
+    }
+
+}
+
 class StandardRoleCriteria                                      {
 
     [string                 ]$type          = "STANDARD"
@@ -336,68 +416,38 @@ class StandardRoleCriteria                                      {
 
 }
 
-class RoleCriteriaChildItem                                     {
-    
-    [ValidateSet( "EQUALS", "NOT_EQUALS", "CONTAINS", "STARTS_WITH", "ENDS_WITH", "AND", "OR" )]
-    [string                     ]$operation
-    $key
-    [string                     ]$stringValue
-    [System.Collections.ArrayList]$children     = @()
+class IdnProvisioningCriteriaAP                                 {
 
-    [void]SetAndChild() {
+    [ValidateSet( "OR" , "AND" )]
+    [string                         ]$operation
+    [System.Collections.ArrayList   ]$children = @()
 
-        $this.operation     = 'AND'
-        $this.key           = $null
-        $this.stringValue   = ""
-        $this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
+    IdnProvisioningCriteriaAP( $Op ) {
+
+        $this.operation = $Op
 
     }
 
-    [void]SetOrChild() {
+    AddChildren( $Child ) {
 
-        $this.operation     = 'OR'
-        $this.key           = $null
-        $this.stringValue   = ""
-        $this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
-        
-    }
-
-    [void]SetAccountKey( $Ops , $StringVal , $Poperty , $SourceID ) {
-
-        $this.operation     = $Ops
-        $this.stringValue   = $StringVal
-        $this.key           = @{}
-        $this.key.Add( "type"       , "ACCOUNT"                 )
-        $this.key.Add( "property"   , "attribute.$($Poperty)"   )
-        $this.key.Add( "sourceId"   , $SourceID                 )
+        $this.children.Add( $Child ) | Out-Null
 
     }
 
-    [void]SetEntitlementKey( $Ops , $StringVal , $SourceID ) {
+}
 
-        $this.operation     = $Ops
-        $this.stringValue   = $StringVal
-        $this.key           = @{}
-        $this.key.Add( "type"       , "ENTITLEMENT"         )
-        $this.key.Add( "property"   , "attribute.memberOf"  )
-        $this.key.Add( "sourceId"   , $SourceID             )
+class IdnProvisioningChild                                      {
 
-    }
+    [string]$attribute
+    [ValidateSet( "EQUALS" , "NOT_EQUALS" , "CONTAINS" , "HAS" )]
+    [string]$operation
+    [string]$value
 
-    [void]SetIdentityKey( $Ops , $StringVal , $Poperty ) {
+    IdnProvisioningChild( $attr , $ops , $val ) {
 
-        $this.operation     = $Ops
-        $this.stringValue   = $StringVal
-        $this.key           = @{}
-        $this.key.Add( "type"       , "IDENTITY"                )
-        $this.key.Add( "property"   , "attribute.$($Poperty)"   )
-        $this.key.Add( "sourceId"   , ""                        )
-
-    }
-
-    [void]AddNestedChild( $Child ) {
-
-        $this.children += $Child
+        $this.attribute = $attr
+        $this.operation = $ops 
+        $this.value     = $val
 
     }
 
@@ -2172,7 +2222,7 @@ function New-IdnRole                                            {
         [Parameter(Mandatory = $true,
         HelpMessage = "Specify Membership Criteria with a StandardRoleCriteria object.",
         ParameterSetName = "Rule")]
-        [ValidateScript({( if ( $_.GetType().Name -eq 'StandardRoleCriteria' ) { $true } else { throw "Object is not of required Type: StandardRoleCriteria" } )})]
+        [ValidateScript( { if ( $_.GetType().Name -eq 'StandardRoleCriteria' ) { $true } else { throw "Object is not of required Type: StandardRoleCriteria" } } ) ]
         [object]$MembershipRule,
 
         # Parameter for entering Entitlements to assign.
@@ -4366,6 +4416,68 @@ function New-IdnAccessProfileOld                                {
 
 }
 
+function New-IdnAccessProfileProvisioningCriteria               {
+
+    [CmdletBinding()]
+
+    param (
+
+        # Paramter for Group Operator.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify AND or OR as the opertaor Between Groups.")]
+        [ValidateSet( "AND" , "OR" )]
+        [string]$BetweenGroupOperator,
+
+        # Parameter for Attribute Name
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name of the account attribute.")]
+        [string]$AttributeName,
+
+        # Parameter attribute operator.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter comparison operator for attribute.")]
+        [ValidateSet( "EQUALS" , "NOT_EQUALS" , "CONTAINS" , "HAS" )]
+        [string]$AttributeOperator,
+
+        # Parameter for attribute value
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the value to look for.")]
+        [string]$AttributeValue
+    
+    )
+
+    begin {
+
+        $Criteria = [IdnProvisioningCriteriaAP]::new( $BetweenGroupOperator )
+
+    }
+
+    process {
+
+        
+        $Other = switch ($BetweenGroupOperator) {
+
+            "OR"    { "AND" }
+            "AND"   { "OR"  }
+        
+        }
+        
+        $ChildAttr = [IdnProvisioningCriteriaAP ]::new( $Other                                                  )
+        $ChildCrit = [IdnProvisioningChild      ]::new( $AttributeName , $AttributeOperator , $AttributeValue   )
+        
+        $ChildAttr.AddChildren( $ChildCrit )
+        $Criteria.AddChildren(  $ChildAttr )
+
+    }
+
+    end {
+
+        return $Criteria
+
+    }
+
+}
+
 function New-IdnAccessProfile                                   {
 
     [CmdletBinding()]
@@ -4399,6 +4511,11 @@ function New-IdnAccessProfile                                   {
         HelpMessage = "Specify the owner of the new Profile.")]
         [ValidateLength(32,32)]
         [string]$OwnerId,
+
+        # Parameter for ProvisioningCriteria.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Pass a IdnProvisioningCriteriaAP object.")]
+        [IdnProvisioningCriteriaAP]$ProvisioningCriteria,
 
         # Parameter for specifying the Owner Type.
         [Parameter(Mandatory = $false,
@@ -4473,8 +4590,14 @@ function New-IdnAccessProfile                                   {
                 }
 
                 entitlements    = @($EntitlmentArray)
-                requestable    = $Requestable
+                requestable     = $Requestable
                
+            }
+
+            if ($ProvisioningCriteria) {
+
+                $Object.Add( 'provisioningCriteria' , $ProvisioningCriteria )
+
             }
 
             $Body = ConvertTo-Json -InputObject $Object -Depth 100
@@ -6519,7 +6642,7 @@ function Get-IdnTaskStatus                                      {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Token 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -6560,7 +6683,7 @@ function Complete-IdnTask                                       {
     
     process {
 
-        $Task = Get-IdnIdentityTaskStatus -Token $Token -TaskID $TaskID -Instance $Instance
+        $Task = Get-IdnIdentityTaskStatus -TaskID $TaskID -Instance $Instance
 
         if ($Task) {
 
@@ -6589,7 +6712,7 @@ function Complete-IdnTask                                       {
             )
 
             $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Token -Body $Body
+            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken.Bearer -Body $Body
             
         }
 
@@ -6607,7 +6730,7 @@ function New-IdnRoleCriteria                                    {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for Between Groups Operator.
         [Parameter(Mandatory = $true,
@@ -6624,7 +6747,7 @@ function New-IdnRoleCriteria                                    {
         
     )
     
-    begin {
+    begin   {
 
         #CriteriaObj        = New-Object -TypeName "RoleCriteriaChildItem"
         $StandardCriteria   = New-Object -TypeName "StandardRoleCriteria"
@@ -6650,7 +6773,7 @@ function New-IdnRoleCriteria                                    {
         
     }
     
-    end {
+    end     {
 
         return $StandardCriteria
         
@@ -6662,7 +6785,7 @@ function New-IdnRoleChild                                       {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Switch for Identity Child.
         [Parameter(Mandatory = $false,
@@ -6740,7 +6863,7 @@ function New-IdnRoleChild                                       {
         
     )
     
-    begin {
+    begin   {
 
         $ChildItem = New-Object -TypeName "RoleCriteriaChildItem"
 
@@ -6760,9 +6883,93 @@ function New-IdnRoleChild                                       {
         
     }
     
-    end {
+    end     {
 
         return $ChildItem
+        
+    }
+
+}
+
+# Last Check for V3/Beta was 02/05/2023
+function Start-IdnEntitlementAggregation                        {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Source ID
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Source's Cloud External ID to refresh Entitlment's for.")]
+        [string]$CloudExternalID,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+        
+    )
+    
+    begin {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}cc/api/source/loadEntitlements/{1}" -f $Tenant.ModernBaseUri , $CloudExternalID
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end {
+
+        return $Call
+        
+    }
+
+}
+
+# Last Check for V3/Beta was 02/05/2023
+function Start-IdnAccountAggregation                            {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Source ID
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Source's Cloud External ID to refresh Entitlment's for.")]
+        [string]$CloudExternalID,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+        
+    )
+    
+    begin {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}cc/api/source/loadAccounts/{1}" -f $Tenant.ModernBaseUri , $CloudExternalID
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end {
+
+        return $Call
         
     }
 
