@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.62'
+    ModuleVersion = '1.63'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -116,6 +116,7 @@
         "Get-IdnAccountActivity"                        ,
         "Get-IdnTaskStatusLists"                        ,
         "Get-IdnIdentityProfile"                        ,
+        "Remove-IdnSourceSchema"                        ,
         "Get-IdnLifeCycleStates"                        ,
         "Get-IdnManagedClusters"                        ,
         "Get-IdnAccessProfiles"                         ,
@@ -134,6 +135,7 @@
         "Get-IdnEventTriggers"                          ,
         "Get-IdnIdentityRoles"                          ,
         "Get-IdnInactiveUsers"                          ,
+        "Get-IdnConnectorList"                          ,
         "Get-IdnSourceSchemas"                          ,
         "New-IdnAccessProfile"                          ,
         "New-IdnTransformRule"                          ,
@@ -154,6 +156,7 @@
         "Get-IdnIdentities"                             ,
         "Search-IdnCustom"                              ,
         "New-IdnRoleChild"                              ,
+        "Remove-IdnSource"                              ,
         "Complete-IdnTask"                              ,
         "Search-IdnEvents"                              ,
         "Get-IdnAccounts"                               ,
@@ -165,6 +168,7 @@
         "Get-IdnAccount"                                ,
         "Get-IdnSources"                                ,
         "Set-IdnSource"                                 ,
+        "New-IdnSource"                                 ,
         "Get-IdnQueue"                                  ,
         "Get-IdnRoles"                                  ,
         "Get-IdnRules"                                  ,

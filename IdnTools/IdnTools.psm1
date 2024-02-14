@@ -62,9 +62,9 @@
  |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                 Tenants & Updated how the Tenant |                 Roles and Sources.               |
  |                                                  |                                                  |                 settings variabl works.          |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
- | Version: 1.61 - Added Account & Entitlement      | Version: 1.62 - Added support for Role Criteria  |                                                  |                                                  |
- |                 aggregation cmdlts & Classes for |                 in Update function.              |                                                  |                                                  |
- |                 Provisioning Criteria on APs.    |                                                  |                                                  |                                                  |
+ | Version: 1.61 - Added Account & Entitlement      | Version: 1.62 - Added support for Role Criteria  | Version: 1.63 - Basic options for creating       |                                                  |
+ |                 aggregation cmdlts & Classes for |                 in Update function.              |                 delimited file sources and for   |                                                  |
+ |                 Provisioning Criteria on APs.    |                                                  |                 deleting source schemas.         |                                                  |
  |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
@@ -449,6 +449,30 @@ class IdnProvisioningChild                                      {
         $this.attribute = $attr
         $this.operation = $ops 
         $this.value     = $val
+
+    }
+
+}
+
+class IdnSource                                                 {
+
+    [string     ]$name
+    [string     ]$description
+    [string     ]$connector
+    [hashtable  ]$owner = @{
+
+        type = 'IDENTITY'
+
+    }
+
+    IdnSource( $name , $dsc , $cntr , $ownid , $ownName ) {
+
+        $this.name          = $name
+        $this.description   = $dsc
+        $this.connector     = $cntr
+
+        $this.owner.Add( 'id'   , $ownid    )
+        $this.owner.Add( 'name' , $ownName  )
 
     }
 
@@ -1643,7 +1667,7 @@ function Get-IdnSourceSchemas                                   {
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter ID of the source you are looking for.")]
-        [ValidateScript({if ($_.Length -eq 32) {$true} else {throw "Provided value is not the correct length of 32 characters."}})]
+        [ValidateLength( 32 ,32 )]
         [string]$SourceId,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
@@ -1663,7 +1687,54 @@ function Get-IdnSourceSchemas                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+}
+
+function Remove-IdnSourceSchema                                 {
+
+    [CmdletBinding()]
+    
+    param   (
+    
+        # Parameter for the source ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter ID of the source.")]
+        [ValidateLength( 32 ,32 )]
+        [string]$SourceId,
+
+        # Parameter for the schema ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter ID of the schema to delete.")]
+        [ValidateLength( 32 ,32 )]
+        [string]$SchemaId,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/sources/{1}/schemas/{2}" -f $Tenant.ModernBaseUri , $SourceId , $SchemaId
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -4945,7 +5016,7 @@ function Search-IdnIdentities                                   {
         [Parameter(ParameterSetName = "Domain",
         Mandatory = $true,
         HelpMessage = "Enter the domain to search for here.")]
-        [ValidateScript( { ( if ($_ -notlike "*@*" ) { $true } else { throw "$_ contains an '@' symbol.  This is included in the query and cannot be part of the value passed." } ) } ) ]
+        [ValidateScript( { if ($_ -notlike "*@*" ) { $true } else { throw "$_ contains an '@' symbol.  This is included in the query and cannot be part of the value passed." } } ) ]
         [string]$EmailDomain,
         
         # Parameter for specifying Life Cycle State.
@@ -5017,7 +5088,7 @@ function Search-IdnIdentities                                   {
             'LastName'              { $SearchStrings += '(attributes.lastname:"'            + $LastName         + '")'          } 
             'FirstName'             { $SearchStrings += '(attributes.firstname:"'           + $FirstName        + '")'          } 
             'EmailAddress'          { $SearchStrings += '(attributes.email:"'               + $EmailAddress     + '")'          }
-            'EmailDomain'           { $SearchStrings += '(attributes.email:"'               + $EmailDomain      + '*@")'        }
+            'EmailDomain'           { $SearchStrings += '(attributes.email:"*@'             + $EmailDomain      + '")'          }
             'LifeCycleState'        { $SearchStrings += '(attributes.cloudLifecycleState:"' + $LifeCycleState   + '")'          }
             'SourceName'            { $SearchStrings += '@accounts(source.name:"'           + $SourceName       + '")'          }
             'LongSourceID'          { $SearchStrings += '@accounts(source.id:"'             + $LongSourceID     + '")'          }
@@ -7029,8 +7100,7 @@ function Start-IdnAccountAggregation                            {
         HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
         [ValidateSet("Production" , "Sandbox" , "Ambassador")]
         [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
-        
-        
+                
     )
     
     begin {
@@ -7073,6 +7143,164 @@ function ConvertTo-IdnStandardRoleCriteria                      {
         
     }
 
+}
+
+function Get-IdnConnectorList                                   {
+
+    [CmdletBinding()]
+    
+    param (
+        
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+                
+    )
+    
+    begin {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/connectors" -f $Tenant.ModernBaseUri
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end {
+
+        $Call
+        
+    }
+
+}
+
+function New-IdnSource                                          {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Connector Script.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Connector Script for the Connector this Source will use.",
+        ParameterSetName = "DelimitedFile")]
+        [switch]$DelimitedFile,
+    
+        # Parameter Source Name
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name for the new Source.")]
+        [string]$Name,
+
+        # Parameter for Description
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a brief description for the source.")]
+        [string]$Description,
+
+        # Parameter for Owner ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Owner's ID.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$OwnerID,
+        
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+                
+    )
+    
+    begin {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/sources" -f $Tenant.ModernBaseUri
+        
+    }
+    
+    process {
+
+        $Owner = Get-IdnIdentity -Id $OwnerID -Instance $Instance
+        
+        if ( $OwnerID -eq $Owner.id ) {
+
+            switch ($PSCmdlet.ParameterSetName) {
+
+                "DelimitedFile" {
+
+                    $Uri       += "?provisionAsCsv=true"
+                    $ConScript  = "delimited-file-angularsc"
+
+                }
+
+                Default         {
+                
+                    throw "$($PSCmdlet.ParameterSetName) has not been configured yet."
+                
+                }
+
+            }
+        
+            $Config = [IdnSource]::new( $Name , $Description , $ConScript , $OwnerID , $Owner.name )
+            $Body   = ConvertTo-Json    -InputObject    $Config -Depth  10
+            $Call   = Invoke-RestMethod -Method         "Post"  -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -ContentType 'application/json' -Body $Body
+
+        }
+        
+    }
+    
+    end {
+
+        return $Call
+        
+    }
+
+}
+
+function Remove-IdnSource                                       {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID of the Source to delete.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$ID,
+        
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+                
+    )
+    
+    begin {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/sources/{1}" -f $Tenant.ModernBaseUri , $ID
+        
+    }
+
+    process {
+
+        $Call = Invoke-RestMethod -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+
+    }
+
+    end {
+
+        return $Call
+
+    }
+    
 }
 
 <#
