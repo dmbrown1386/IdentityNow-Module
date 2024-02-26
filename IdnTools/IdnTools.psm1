@@ -2485,6 +2485,7 @@ function Update-IdnTransform                                    {
 
 }
 
+# No exported in the Manifest.  Retaining for now in case the New Transform command needs broken down into individual ones for teach Type.
 function New-IdnTransformForDateFormat                          {
 
     [CmdletBinding()]
