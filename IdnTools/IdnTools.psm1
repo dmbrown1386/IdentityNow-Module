@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 01/28/2024                                                                                                                                                                                |
+ | Last Modified : 02/26/2024                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -61,6 +61,11 @@
  | Version: 1.57 - Add functions to Add, Replace &  | Version: 1.58 - Updated Get-Identites function   | Version: 1.59 - Added support for Ambassador     | Version: 1.60 - Added Filter support for APs,    |
  |                 remove Entitlements for APs.     |                 to use Identities endpoint.      |                 Tenants & Updated how the Tenant |                 Roles and Sources.               |
  |                                                  |                                                  |                 settings variabl works.          |                                                  |
+ |                                                  |                                                  |                                                  |                                                  |
+ | Version: 1.61 - Added Account & Entitlement      | Version: 1.62 - Added support for Role Criteria  | Version: 1.63 - Basic options for creating       | Version: 1.64 - Added support for ceating more   |
+ |                 aggregation cmdlts & Classes for |                 in Update function.              |                 delimited file sources and for   |                 Transforms and getting Identity  |
+ |                 Provisioning Criteria on APs.    |                                                  |                 deleting source schemas.         |                 Attributes                       |
+ |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
 #>
@@ -91,7 +96,7 @@ class IdnPAT                                                    {
 
 class IdnBearerToken                                            {
 
-    [ordered]$Bearer = @{}
+    [hashtable]$Bearer = @{}
 
     IdnBearerToken( $Hash ) {
 
@@ -126,20 +131,20 @@ class IdnProductionTenant                                       {
     [object         ]$Context
 
 
-    IdnProductionTenant( [string]$OrgName )         {
+    IdnProductionTenant(    [string]$OrgName    ) {
 
         $this.ModernBaseUri = "https://{0}.api.identitynow.com/"    -f $OrgName
         $this.LegacyBaseUri = "https://{0}.identitynow.com/"        -f $OrgName
         
     }
 
-    SetPAT( [IdnPAT]$PAT )   {
+    SetPAT(                 [IdnPAT]$PAT        ) {
         
         $this.PAT = $PAT
 
     }
 
-    RefreshToken()                                  {
+    RefreshToken(                               ) {
 
         $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
         $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
@@ -158,8 +163,8 @@ class IdnProductionTenant                                       {
 
             $Call.expires_in    = $Time.AddSeconds( $Call.expires_in ) 
             $Info               = $Call | Select-Object "*" -ExcludeProperty "access_token"
-            $this.TenantToken   = [IdnBearerToken]::new( $Bearer )
-            $this.Context       = [IdnContext]$Info
+            $this.TenantToken   = [IdnBearerToken   ]::new( $Bearer )
+            $this.Context       = [IdnContext       ]$Info
         
         }
 
@@ -176,20 +181,20 @@ class IdnAmbassadorTenant                                       {
     [object         ]$Context
 
 
-    IdnAmbassadorTenant( [string]$OrgName )             {
+    IdnAmbassadorTenant(    [string]$OrgName    ) {
 
         $this.ModernBaseUri = "https://{0}.api.identitynow-demo.com/"    -f $OrgName
         $this.LegacyBaseUri = "https://{0}.identitynow-demo.com/"        -f $OrgName
         
     }
 
-    SetPAT( [IdnPAT]$PAT )                              {
+    SetPAT(                 [IdnPAT]$PAT        ) {
 
         $this.PAT = $PAT
 
     }
 
-    RefreshToken()                                      {
+    RefreshToken(                               ) {
 
         $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
         $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
@@ -208,8 +213,8 @@ class IdnAmbassadorTenant                                       {
 
             $Call.expires_in    = $Time.AddSeconds( $Call.expires_in ) 
             $Info               = $Call | Select-Object "*" -ExcludeProperty "access_token"
-            $this.TenantToken   = [IdnBearerToken]::new( $Bearer )
-            $this.Context       = [IdnContext]$Info
+            $this.TenantToken   = [IdnBearerToken   ]::new( $Bearer )
+            $this.Context       = [IdnContext       ]$Info
         
         }
 
@@ -225,7 +230,7 @@ class IdnConnectionDetails                                      {
     [IdnProductionTenant    ]$Sandbox
     [IdnAmbassadorTenant    ]$Ambassador
     
-    IdnConnectionDetails() {
+    IdnConnectionDetails(                       ) {
 
         $Names = Import-IdnConfigSettings
         $Prod = [IdnProductionTenant]::new( $Names.IdnProd      )
@@ -243,7 +248,7 @@ class IdnConnectionDetails                                      {
 
     }
 
-    SetDefaultInstance( [string]$DefaultChoice ) {
+    SetDefaultInstance( [string]$DefaultChoice  ) {
 
         $this.DefaultInstance = $DefaultChoice
 
@@ -251,24 +256,25 @@ class IdnConnectionDetails                                      {
 
 }
 
-class IdnTransformRuleBase                                      {
+class IdnTransformLogicBase                                     {
 
     [object]$attributes = @{}
-    [ValidateSet( "accountAttribute" , "firstValid" , "lookup" )][string]$type
-    [string]$name
+    [string]$type
 
 }
 
 class IdnIdentityAttributePatchNewLogic                         {
 
     [ValidateSet( "add" , "remove" , "replace" , "move" , "copy" , "test" )][string]$op
-    [string]$path
-    [hashtable]$value = @{
+    [string     ]$path
+    [hashtable  ]$value = @{
 
         identityAttributeName   = ""
         transformDefinition     = @{
+
             type        = ""
             attributes  = @{}
+        
         }
 
     }
@@ -313,6 +319,80 @@ class IdnRolePatch                                              {
 
 }
 
+class RoleCriteriaChildItem                                     {
+    
+    [ValidateSet( "EQUALS", "NOT_EQUALS", "CONTAINS", "STARTS_WITH", "ENDS_WITH", "AND", "OR" )]
+    [string                 ]$operation
+    [PSCustomObject         ]$key
+    [string                 ]$stringValue
+    [RoleCriteriaChildItem[]]$children     #= @()
+
+    [void]SetAndChild(                                                      ) {
+
+        $this.operation     = 'AND'
+        $this.key           = $null
+        $this.stringValue   = ""
+
+    }
+
+    [void]SetOrChild(                                                       ) {
+
+        $this.operation     = 'OR'
+        $this.key           = $null
+        $this.stringValue   = ""
+        
+    }
+
+    [void]SetAccountKey(        $Ops    , $StringVal , $Poperty , $SourceID ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = [PSCustomObject]@{
+
+            type        = "ACCOUNT"                 
+            property    = "attribute.$($Poperty)" 
+            sourceId    = $SourceID                 
+
+        }
+
+    }
+
+    [void]SetEntitlementKey(    $Ops    , $StringVal , $SourceID            ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = [PSCustomObject]@{
+
+            type        = "ENTITLEMENT"         
+            property    = "attribute.memberOf"
+            sourceId    = $SourceID             
+
+        }
+
+    }
+
+    [void]SetIdentityKey(       $Ops    , $StringVal , $Poperty             ) {
+
+        $this.operation     = $Ops
+        $this.stringValue   = $StringVal
+        $this.key           = [PSCustomObject]@{
+
+            type        = "IDENTITY"                
+            property    = "attribute.$($Poperty)" 
+            sourceId    = ""                        
+
+        }
+
+    }
+
+    [void]AddNestedChild(       $Child                                      ) {
+
+        $this.children += $Child
+
+    }
+
+}
+
 class StandardRoleCriteria                                      {
 
     [string                 ]$type          = "STANDARD"
@@ -336,78 +416,71 @@ class StandardRoleCriteria                                      {
 
 }
 
-class RoleCriteriaChildItem                                     {
-    
-    [ValidateSet( "EQUALS", "NOT_EQUALS", "CONTAINS", "STARTS_WITH", "ENDS_WITH", "AND", "OR" )]
-    [string                     ]$operation
-    $key
-    [string                     ]$stringValue
-    [System.Collections.ArrayList]$children     = @()
+class IdnProvisioningCriteriaAP                                 {
 
-    [void]SetAndChild() {
+    [ValidateSet( "OR" , "AND" )]
+    [string                         ]$operation
+    [System.Collections.ArrayList   ]$children = @()
 
-        $this.operation     = 'AND'
-        $this.key           = $null
-        $this.stringValue   = ""
-        $this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
+    IdnProvisioningCriteriaAP( $Op ) {
+
+        $this.operation = $Op
 
     }
 
-    [void]SetOrChild() {
+    AddChildren( $Child ) {
 
-        $this.operation     = 'OR'
-        $this.key           = $null
-        $this.stringValue   = ""
-        $this.children.Add( (New-Object -TypeName "RoleCriteriaChildItem")        )
-        
-    }
-
-    [void]SetAccountKey( $Ops , $StringVal , $Poperty , $SourceID ) {
-
-        $this.operation     = $Ops
-        $this.stringValue   = $StringVal
-        $this.key           = @{}
-        $this.key.Add( "type"       , "ACCOUNT"                 )
-        $this.key.Add( "property"   , "attribute.$($Poperty)"   )
-        $this.key.Add( "sourceId"   , $SourceID                 )
-
-    }
-
-    [void]SetEntitlementKey( $Ops , $StringVal , $SourceID ) {
-
-        $this.operation     = $Ops
-        $this.stringValue   = $StringVal
-        $this.key           = @{}
-        $this.key.Add( "type"       , "ENTITLEMENT"         )
-        $this.key.Add( "property"   , "attribute.memberOf"  )
-        $this.key.Add( "sourceId"   , $SourceID             )
-
-    }
-
-    [void]SetIdentityKey( $Ops , $StringVal , $Poperty ) {
-
-        $this.operation     = $Ops
-        $this.stringValue   = $StringVal
-        $this.key           = @{}
-        $this.key.Add( "type"       , "IDENTITY"                )
-        $this.key.Add( "property"   , "attribute.$($Poperty)"   )
-        $this.key.Add( "sourceId"   , ""                        )
-
-    }
-
-    [void]AddNestedChild( $Child ) {
-
-        $this.children += $Child
+        $this.children.Add( $Child ) | Out-Null
 
     }
 
 }
 
-class AccountAttributeRule  : IdnTransformRuleBase              {
+class IdnProvisioningChild                                      {
 
-    [void]SetRequiredAttributes( [string]$SourceLongID , [string]$Name , [string]$TargetProperty ) {
+    [string]$attribute
+    [ValidateSet( "EQUALS" , "NOT_EQUALS" , "CONTAINS" , "HAS" )]
+    [string]$operation
+    [string]$value
 
-        $this.name                      = $Name
+    IdnProvisioningChild( $attr , $ops , $val ) {
+
+        $this.attribute = $attr
+        $this.operation = $ops 
+        $this.value     = $val
+
+    }
+
+}
+
+class IdnSource                                                 {
+
+    [string     ]$name
+    [string     ]$description
+    [string     ]$connector
+    [hashtable  ]$owner = @{
+
+        type = 'IDENTITY'
+
+    }
+
+    IdnSource( $name , $dsc , $cntr , $ownid , $ownName ) {
+
+        $this.name          = $name
+        $this.description   = $dsc
+        $this.connector     = $cntr
+
+        $this.owner.Add( 'id'   , $ownid    )
+        $this.owner.Add( 'name' , $ownName  )
+
+    }
+
+}
+
+class AccountAttributeLogic : IdnTransformLogicBase              {
+
+    [void]SetRequiredAttributes( [string]$SourceLongID , [string]$TargetProperty ) {
+
         $this.attributes.applicationId  = $SourceLongID
         $this.attributes.attributeName  = $TargetProperty
     }
@@ -418,13 +491,92 @@ class AccountAttributeRule  : IdnTransformRuleBase              {
     [void]SetAccountFilter(             [string]$AcctFilter     ) { $this.attributes.Add( "accountFilter"           , $AcctFilter       ) }
     [void]SetAccountPropertyFilter (    [string]$PropertyFilter ) { $this.attributes.Add( "accountPropertyFilter"   , $PropertyFilter   ) }
 
-    AccountAttributeRule() {        
+    AccountAttributeLogic() {        
 
         $this.type = "accountAttribute"
         $this.attributes.Add( "applicationId" , "" )
         $this.attributes.Add( "attributeName" , "" )
     
     }
+
+}
+
+class ConditionalLogic      : IdnTransformLogicBase              {
+
+    ConditionalLogic() {
+
+        $this.type = "conditional"
+
+    }
+
+    SetRequiredAttributes( $test , $target , $passed , $failed ) {
+
+        $this.attributes.Add( "expression"          , ( "{0} eq {1}" -f $test , $target )    )
+        $this.attributes.Add( "positiveCondition"   , $passed   )
+        $this.attributes.Add( "negativeCondition"   , $failed   )
+
+    }
+
+    AddVariable( $Var , $Transform ) {
+
+        $this.attributes.Add( $Var , $Transform )
+
+    }
+
+}
+
+class DateFormatLogic       : IdnTransformLogicBase              {
+
+    DateFormatLogic(                 ) { $this.type =            "dateFormat"                            }
+    AddInputFormat(     $InForm     ) { $this.attributes.Add(   "inputFormat"             , $InForm   ) }
+    AddOutputFormat(    $OutForm    ) { $this.attributes.Add(   "outputFormat"            , $OutForm  ) }
+    SetPeriodicRefresh( $Set        ) { $this.attributes.Add(   "requiresPeriodicRefresh" , $Set      ) }
+    AddInputTransform(  $Rule       ) { $this.attributes.Add(   "input"                   , $Rule     ) }
+
+}
+
+class StaticLogic           : IdnTransformLogicBase              {
+
+    StaticRule( ) {
+
+        $this.type = "static"
+        $this.attributes.Add( "value" , "" )
+
+    }
+
+    SetRequiredAttributes( $Value ) {
+
+        $this.attributes.value = $Value
+
+    }
+
+}
+
+class DateCompareLogic      : IdnTransformLogicBase              {
+
+    DateCompareLogic() {
+
+        $this.type = "dateCompare"
+        $this.attributes.Add( "firstDate"           , $null     )
+        $this.attributes.Add( "secondDate"          , $null     )
+
+    }
+
+    SetRequiredAttributes( $Op , $Passed , $Failed ) {
+
+        $this.attributes.Add( "operator"            , $Op       )
+        $this.attributes.Add( "positiveCondition"   , $Passed   )
+        $this.attributes.Add( "negativeCondition"   , $Failed   )
+
+    }
+
+    AddSecondDateTransfrom(  $Logic ) { $this.attributes.secondDate = $Logic    }
+    AddFirstDateTransfrom(   $Logic ) { $this.attributes.firstDate  = $Logic    }
+    AddSecondDateStaticDate( $Date  ) { $this.attributes.secondDate = $Date.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff-00")     }
+    #AddSecondDateStaticDate( $Date  ) { $this.attributes.secondDate = $Date.ToUniversalTime().ToString("s")     }
+    AddFirstDateStaticDate(  $Date  ) { $this.attributes.firstDate  = $Date.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff-00")     }
+    SetFirstDateToNow(              ) { $this.attributes.firstDate  = "now"     }
+    SetSecondDatToNow(              ) { $this.attributes.secondDate = "now"     }
 
 }
 
@@ -1328,7 +1480,7 @@ function Get-IdnIdentitySnapShot                                {
 
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# V3 version found: https://developer.sailpoint.com/idn/api/v3/set-lifecycle-state
 function Set-IdnIdentity                                        {
 
     [CmdletBinding()]
@@ -1382,7 +1534,7 @@ function Set-IdnIdentity                                        {
 
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# V3 replacment: https://developer.sailpoint.com/idn/api/v3/patch-auth-user/
 function Set-IdnIdentityAdminRoles                              {
 
     [CmdletBinding()]
@@ -1592,7 +1744,7 @@ function Get-IdnSourceSchemas                                   {
         # Parameter for the ID of the source to query
         [Parameter(Mandatory = $true,
         HelpMessage = "Enter ID of the source you are looking for.")]
-        [ValidateScript({if ($_.Length -eq 32) {$true} else {throw "Provided value is not the correct length of 32 characters."}})]
+        [ValidateLength( 32 ,32 )]
         [string]$SourceId,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
@@ -1612,7 +1764,54 @@ function Get-IdnSourceSchemas                                   {
     
     process {
 
-        $Call = Invoke-RestMethod -Method Get -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+}
+
+function Remove-IdnSourceSchema                                 {
+
+    [CmdletBinding()]
+    
+    param   (
+    
+        # Parameter for the source ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter ID of the source.")]
+        [ValidateLength( 32 ,32 )]
+        [string]$SourceId,
+
+        # Parameter for the schema ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter ID of the schema to delete.")]
+        [ValidateLength( 32 ,32 )]
+        [string]$SchemaId,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/sources/{1}/schemas/{2}" -f $Tenant.ModernBaseUri , $SourceId , $SchemaId
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
         
     }
     
@@ -1670,7 +1869,7 @@ function Get-IdnSourcesById                                     {
 
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Start-IdnSourceAccountAggregation                      {
 
     [CmdletBinding()]
@@ -1947,7 +2146,122 @@ function Remove-IdnProvisioningPoliciesForSource                {
 
 } 
 
-function Get-IdnTransformRules                                  {
+function Get-IdnIdentityAttributes                              {
+
+    [CmdletBinding()]
+    
+    param   (
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}beta/identity-attributes" -f $Tenant.ModernBaseUri
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+} 
+
+function Get-IdnIdentityAttribute                               {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for Attribute Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name of the Identity Attribute to retrieve.")]
+        [string]$Name,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}beta/identity-attributes/{1}" -f $Tenant.ModernBaseUri , $Name
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+} 
+
+function Remove-IdnIdentityAttribute                            {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for Attribute Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name of the Identity Attribute to retrieve.")]
+        [string]$Name,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}beta/identity-attributes/{1}" -f $Tenant.ModernBaseUri , $Name
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+} 
+
+function Get-IdnTransforms                                      {
 
     [CmdletBinding()]
     
@@ -1982,17 +2296,107 @@ function Get-IdnTransformRules                                  {
 
 }
 
-function New-IdnTransformRule                                   {
+function Get-IdnTransform                                       {
 
     [CmdletBinding()]
     
     param   (
 
+        # Parameter for Transform ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID of the Transform to lookup.")]
+        [guid]$ID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/transforms/{1}" -f $Tenant.ModernBaseUri , $ID
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end         {
+
+        return $Call
+        
+    }
+
+}
+
+function Remove-IdnTransform                                       {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for Transform ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID of the Transform to lookup.")]
+        [guid]$ID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/transforms/{1}" -f $Tenant.ModernBaseUri , $ID
+        
+    }
+    
+    process {
+
+        $Call = Invoke-WebRequest -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer | Select-Object "StatusCode","StatusDescription"
+        
+    }
+    
+    end         {
+
+        return $Call
+        
+    }
+
+}
+
+function Publish-IdnTransform                                   {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter Transform's Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a name for the Transform.")]
+        [string]$Name,
+
         # Parameter help description
         [Parameter(Mandatory = $true,
         HelpMessage = "Provide the Criteria for the new Transform Rule.")]
-        [ValidateScript({if ( ( $_.GetType() ).BaseType.Name -eq "IdnTransformRuleBase") {$true} else {throw "BaseType is not IdnTransformRuleBase."}})]
-        [object]$TransformRule,
+        [ValidateScript( { if ( ( $_.GetType() ).BaseType.Name -eq "IdnTransformLogicBase" ) {$true} else { throw "BaseType is not IdnTransformLogicBase." } } ) ]
+        [object]$TransformLogic,
+
+        # Parameter for Requiring regular refreshes
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Set to True to refresh result during regular refreshes.  Set to False to skip.")]
+        [bool]$RequireRefresh,
         
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2011,8 +2415,11 @@ function New-IdnTransformRule                                   {
     
     process {
 
-        $RuleConfigAsJson   = ConvertTo-Json    -InputObject    $TransformRule  -Depth  100
-        $Call               = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $RuleConfigAsJson -ContentType "application/json"
+        $TransformLogic | Add-Member -MemberType "NoteProperty" -Name "name" -Value $Name
+        $TransformLogic.attributes.Add( "requiresPeriodicRefresh" , $RequireRefresh )
+
+        $RuleConfigAsJson   = ConvertTo-Json    -InputObject    $TransformLogic  -Depth  100
+        $Call               = Invoke-RestMethod -Method         "Post"          -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $RuleConfigAsJson -ContentType "application/json"
         
     }
     
@@ -2024,7 +2431,7 @@ function New-IdnTransformRule                                   {
 
 }
 
-function Update-IdnTransformRule                                {
+function Update-IdnTransform                                    {
 
     [CmdletBinding()]
     
@@ -2035,10 +2442,11 @@ function Update-IdnTransformRule                                {
         HelpMessage = "Pass the ID of the Transform Rule.")]
         [guid]$RuleID,
 
-        # Parameter Json Body
+        # Parameter help description
         [Parameter(Mandatory = $true,
-        HelpMessage = "Pass the JSON for the rule you are creating as a string.")]
-        [string]$RuleUpdateJson,
+        HelpMessage = "Provide the Criteria for the new Transform Rule.")]
+        [ValidateScript( { if ( ( $_.GetType() ).BaseType.Name -eq "IdnTransformLogicBase" ) {$true} else { throw "BaseType is not IdnTransformLogicBase." } } ) ]
+        [object]$NewLogic,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2057,13 +2465,338 @@ function Update-IdnTransformRule                                {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Put" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $RuleUpdateJson -ContentType "application/json"
+        if (-not $NewLogic.name) {
+
+            $Current = Get-IdnTransform -ID $RuleID -Instance $Instance
+            $NewLogic | Add-Member -MemberType "NoteProperty" -Name "name" -Value $Current.name
+
+        }
+
+        $RuleUpdateJson     = ConvertTo-Json    -InputObject    $NewLogic   -Depth  100
+        $Call               = Invoke-RestMethod -Method         "Put"       -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $RuleUpdateJson -ContentType "application/json"
         
     }
     
     end     {
 
         return $Call
+        
+    }
+
+}
+
+function New-IdnTransformForDateFormat                          {
+
+    [CmdletBinding()]
+
+    param (
+
+        # Parameter for Input Template. 
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "TemplateInput",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "TemplateOutput",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "CustomOutput",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [ValidateSet("ISO8601" , "LDAP" , "PEOPLE_SOFT" , "EPOCH_TIME_JAVA" , "EPOCH_TIME_WIN32")]
+        [string]$DateInputTemplate,
+
+        # Parameter for Output Template. 
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "TemplateOutput",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "TemplateInput",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "CustomInput",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [ValidateSet("ISO8601" , "LDAP" , "PEOPLE_SOFT" , "EPOCH_TIME_JAVA" , "EPOCH_TIME_WIN32")]
+        [string]$DateOutputTemplate,
+
+        # Parameter for Input Custom. 
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "CustomInput",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "TemplateOutput",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "CustomOutput",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [string]$DateInputCustom,
+        
+        # Parameter for Input Custom. 
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "CustomOutput",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "TemplateInput",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "CustomInput",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [string]$DateOutputCustom,
+
+        # Parameter for Input Transform
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Specify a Transform to use for Input.")]
+        [string]$Input
+        
+    )
+
+    begin {
+        
+        $Conditional = New-Object -TypeName "DateFormatLogic"
+        Write-Host $PSCmdlet.ParameterSetName -ForegroundColor Cyan
+
+    }
+
+    process {
+
+        switch ($PSBoundParameters.Keys) {
+
+            "DateInputTemplate"     { $Conditional.AddInputFormat($DateInputTemplate) }
+            "DateOutputTemplate"    { $Conditional.AddOutputFormat($DateInputTemplate) }
+            "DateInputCustom"       { $Conditional.AddInputFormat($DateInputCustom) }
+            "DateOutputCustom"      { $Conditional.AddOutputFormat($DateOutputCustom) }
+            "Input"                 { $Conditional.AddInputTransform($Input) }
+            
+        }
+
+    }
+
+    end {
+
+        return $Conditional
+
+    }
+
+}
+
+function New-IdnTransformLogic                                  {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        [Parameter( ParameterSetName = 'AccountAttributeLogic'   , Mandatory = $false )][Switch]$AccountAttributeLogic   ,
+        [Parameter( ParameterSetName = 'ConditionalLogic'        , Mandatory = $false )][Switch]$ConditionalLogic        ,
+        [Parameter( ParameterSetName = 'DateFormatLogic'         , Mandatory = $false )][Switch]$DateFormatLogic         ,
+        [Parameter( ParameterSetName = 'StaticLogic'             , Mandatory = $false )][Switch]$StaticLogic             ,
+        [Parameter( ParameterSetName = 'DateCompareLogic'        , Mandatory = $false )][Switch]$DateCompareLogic        ,
+
+        # Parameter for Static String.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "StaticRule",
+        HelpMessage = "Enter the value of the Static String to use.")]
+        [string]$StaticString,
+
+        # Parameter for the Source ID.
+        [Parameter(ParameterSetName = "AccountAttributeLogic",
+        Mandatory = $true,
+        HelpMessage = "Enter the Long ID for the Source.")]
+        [ValidateLength(32,32)]
+        [string]$LongSourceID,
+
+        # Parameter for the Attribute Name.
+        [Parameter(ParameterSetName = "AccountAttributeLogic",
+        Mandatory = $true,
+        HelpMessage = "Enter the name of the Account Attribute to retrieve.")]
+        [string]$AccountAttibuteName,
+        
+        # Parameter for the Account Property Filter.
+        [Parameter(ParameterSetName = "AccountAttributeLogic",
+        Mandatory = $false,
+        HelpMessage = "Enter the Account Property Filter Criteria.")]
+        [string]$AccountPropertyFilter,
+        
+        # Parameter for the Account Filter.
+        [Parameter(ParameterSetName = "AccountAttributeLogic",
+        Mandatory = $false,
+        HelpMessage = "Enter the Filter Criteria.")]
+        [string]$AccountFilter,
+
+        # Parameter for the Sort Attribute.
+        [Parameter(ParameterSetName = "AccountAttributeLogic",
+        Mandatory = $false,
+        HelpMessage = "Enter the Account Attribute to sort by.")]
+        [string]$SortAttribute,
+
+        # Switch for the returning first link only.
+        [Parameter(ParameterSetName = "AccountAttributeLogic",
+        Mandatory = $false,
+        HelpMessage = "Switch to return only the first account.")]
+        [switch]$ReturnFirstOnly,
+
+        # Switch for the Sort Attribute.
+        [Parameter(ParameterSetName = "AccountAttributeLogic",
+        Mandatory = $false,
+        HelpMessage = "Switch to set the sort order to Descending.")]
+        [switch]$EnableDescendingSort,
+
+        # Parameter for Test Value.
+        [Parameter(ParameterSetName = "ConditionalLogic",
+        Mandatory = $true,
+        HelpMessage = "Enter the value to test.  This will be on the Left side of the Expression.")]
+        [string]$ValueToTest,
+
+        # Parameter for value to test against.
+        [Parameter(ParameterSetName = "ConditionalLogic",
+        Mandatory = $true,
+        HelpMessage = "Enter the value to test against.  This will be on the Right side of the Expression.")]
+        [string]$ValueToTestAgainst,
+
+        # Parameter for the True Output.
+        [Parameter(ParameterSetName = "ConditionalLogic",
+        Mandatory = $true,
+        HelpMessage = "Enter the value to use if the test passes.")]
+        [string]$ResultIfTrue,
+
+        # Parameter for the False Output.
+        [Parameter(ParameterSetName = "ConditionalLogic",
+        Mandatory = $true,
+        HelpMessage = "Enter the value to use if the test fails.")]
+        [string]$ResultIfFalse,
+
+        # Parameter for the Variable's Name.
+        [Parameter(ParameterSetName = "ConditionalLogic",
+        Mandatory = $false,
+        HelpMessage = "Enter the name of the Variable to use.")]
+        [string]$VariableName,
+
+        # Parameter for the Variable Transfrom Logic.
+        [Parameter(ParameterSetName = "ConditionalLogic",
+        Mandatory = $false,
+        HelpMessage = "Enter the nested Transform Logic for the Variable.")]
+        [ValidateScript( { if ( ( $_.GetType() ).BaseType.Name -eq "IdnTransformLogicBase" ) {$true} else { throw "BaseType is not IdnTransformLogicBase." } } ) ]
+        [object]$VariableTransform,
+
+        # Parameter for Input Template. 
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateFormatLogic",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [ValidateSet("ISO8601" , "LDAP" , "PEOPLE_SOFT" , "EPOCH_TIME_JAVA" , "EPOCH_TIME_WIN32")]
+        [string]$DateInputTemplate,
+
+        # Parameter for Output Template. 
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateFormatLogic",
+        HelpMessage = "Select the Input Template to use for the Date Format.")]
+        [ValidateSet("ISO8601" , "LDAP" , "PEOPLE_SOFT" , "EPOCH_TIME_JAVA" , "EPOCH_TIME_WIN32")]
+        [string]$DateOutputTemplate,
+
+        # Parameter for Input Custom. 
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateFormatLogic",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [string]$DateInputCustom,
+        
+        # Parameter for Input Custom. 
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateFormatLogic",
+        HelpMessage = "Enter Custom format for the Input Date.  Refer to http://docs.oracle.com/javase/8/docs/api/java/text/SimpleDateFormat.html for help")]
+        [string]$DateOutputCustom,
+
+        # Parameter for Input Transform
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateFormatLogic",
+        HelpMessage = "Specify a Transform to use for Input.")]
+        [ValidateScript( { if ( ( $_.GetType() ).BaseType.Name -eq "IdnTransformLogicBase" ) {$true} else { throw "BaseType is not IdnTransformLogicBase." } } ) ]
+        [object]$InputTransform,
+
+        # Parameter for comparison Operator.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "DateCompareLogic",
+        HelpMessage = "Specify the Comparison Operator to use for the Date test.")]
+        [ValidateSet( "lt" , "lte" , "gt" , "gte" )]
+        [string]$Operator,
+
+        # Parameter for the Positive value.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "DateCompareLogic",
+        HelpMessage = "Specify the value to use the test is positive.")]
+        [string]$PositiveCondition,
+        
+        # Parameter for the Negative value.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "DateCompareLogic",
+        HelpMessage = "Specify the value to use the test is negative.")]
+        [string]$NegativeCondition,
+
+        # Parameter for First Date Transform.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateCompareLogic",
+        HelpMessage = "Specify a Transform to use for the First Date.")]
+        [ValidateScript( { if ( ( $_.GetType() ).BaseType.Name -eq "IdnTransformLogicBase" ) {$true} else { throw "BaseType is not IdnTransformLogicBase." } } ) ]
+        [object]$FirstDateTransform,
+
+        # Parameter second date static.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter datetime value to test against as the Second Date.")]
+        [datetime]$TestAgainstStaticDate,
+
+        # Switch for setting Test Date to Now.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateCompareLogic",
+        HelpMessage = "Switch parameter to use the current time for the Test Date.")]
+        [switch]$TestForCurrentTime,
+        
+        # Switch for setting Test Date to Now.
+        [Parameter(Mandatory = $false,
+        ParameterSetName = "DateCompareLogic",
+        HelpMessage = "Switch parameter to use the current time to test against.")]
+        [switch]$TestAgainstCurrentTime
+        
+    )
+    
+    begin   {
+
+        $Type = $PSCmdlet.ParameterSetName
+        $Rule = New-Object -TypeName $Type
+        
+    }
+    
+    process {
+
+        switch ($Type) {
+
+            "AccountAttributeLogic"  { $Rule.SetRequiredAttributes( $LongSourceID , <# $RuleName , #> $AccountAttibuteName ) }
+            "ConditionalLogic"       { $Rule.SetRequiredAttributes( $ValueToTest , $ValueToTestAgainst , $ResultIfTrue , $ResultIfFalse ) }
+            "DateCompareLogic"       { $Rule.SetRequiredAttributes( $Operator , $PositiveCondition , $NegativeCondition ) }
+            "StaticRule"            { $Rule.SetRequiredAttributes( $StaticString ) }
+            #Default                 { throw "$Type has not be configured yet.  You will need to write your transform manually." }
+        
+        }
+
+        switch ($PSBoundParameters.Keys) {
+
+            "AccountFilter"         { $Rule.SetAccountFilter(           $AccountFilter          ) }     
+            "AccountPropertyFilter" { $Rule.SetAccountPropertyFilter(   $AccountPropertyFilter  ) }  
+            "SortAttribute"         { $Rule.SetSortProperty(            $SortAttribute          ) }
+            "ReturnFirstOnly"       { $Rule.EnableReturnFirstLink(                              ) }
+            "EnableDescendingSort"  { $Rule.EnableDescendingSort(                               ) }
+            "VariableName"          { $Rule.AddVariable(                $VariableName , $VariableTransform) }
+            "DateInputTemplate"     { $Rule.AddInputFormat($DateInputTemplate) }
+            "DateOutputTemplate"    { $Rule.AddOutputFormat($DateOutputTemplate) }
+            "DateInputCustom"       { $Rule.AddInputFormat($DateInputCustom) }
+            "DateOutputCustom"      { $Rule.AddOutputFormat($DateOutputCustom) }
+            "InputTransform"        { $Rule.AddInputTransform($InputTransform) }
+            "FirstDateTransform"    { $Rule.AddFirstDateTransfrom($FirstDateTransform) }
+            "TestAgainstStaticDate" { $Rule.AddSecondDateStaticDate($TestAgainstStaticDate) }
+            "TestForCurrentTime"    { $Rule.SetFirstDateToNow() }
+            "TestAgainstCurrentTime"    { $Rule.SetSecondDatToNow() }
+            
+        }
+        
+    }
+    
+    end     {
+
+        return $Rule
         
     }
 
@@ -2134,6 +2867,52 @@ function Get-IdnRole                                            {
     
 }
 
+function Get-IdnRoleMembershipCriteria                          {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for entering the ID of the Role
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID for the Role you're looking for.")]
+        [string]$Id,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/roles/{1}" -f $Tenant.ModernBaseUri , $Id
+                
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+
+        if ($Call) {
+
+            $Rule = [StandardRoleCriteria]$Call.membership
+
+        }
+        
+    }
+    
+    end     {
+
+        return $Rule
+        
+    }
+    
+}
+
 function New-IdnRole                                            {
     
     [CmdletBinding()]
@@ -2172,7 +2951,7 @@ function New-IdnRole                                            {
         [Parameter(Mandatory = $true,
         HelpMessage = "Specify Membership Criteria with a StandardRoleCriteria object.",
         ParameterSetName = "Rule")]
-        [ValidateScript({( if ( $_.GetType().Name -eq 'StandardRoleCriteria' ) { $true } else { throw "Object is not of required Type: StandardRoleCriteria" } )})]
+        [ValidateScript( { if ( $_.GetType().Name -eq 'StandardRoleCriteria' ) { $true } else { throw "Object is not of required Type: StandardRoleCriteria" } } ) ]
         [object]$MembershipRule,
 
         # Parameter for entering Entitlements to assign.
@@ -2417,9 +3196,17 @@ function Update-IdnRoleMembers                                  {
 
         # Parameter for the list of users to add to the Role
         [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a list of users to add.")]
+        HelpMessage = "Enter a list of users to add.",
+        ParameterSetName = "IdenityList")]
         [ValidateLength(32,32)]
         [string[]]$IdentityIDs,
+
+        # Parameter for new Criteria
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a new set of Standard Role Criteria.",
+        ParameterSetName = "Standard")]
+        [ValidateScript( { if ($_.GetType().Name -eq 'StandardRoleCriteria' ) { $true } else { throw "The Type of $($_.GetType().Name) needs to be 'StandardRoleCriteria'." } } ) ]
+        [object]$NewCriteria,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
         [Parameter(Mandatory = $false,
@@ -2438,36 +3225,60 @@ function Update-IdnRoleMembers                                  {
     
     process {
 
-        $IdentityList = foreach ($Id in $IdentityIDs) {
-            
-            @{
+        switch ( $PSCmdlet.ParameterSetName ) {
 
-                id = $id
-
-            }
-            
-        }
-
-        $Object = @(            
-
-            [ordered]@{
-
-                op      = 'replace'
-                path    = '/membership'
-                value   = [ordered]@{
-
-                    type        = 'IDENTITY_LIST'
-                    identities  = @(
+            "IdenityList"   {
                         
-                        $IdentityList
-                        
-                    )
+                $IdentityList = foreach ($Id in $IdentityIDs) {
+                    
+                    @{
 
+                        id = $id
+
+                    }
+                    
                 }
 
+                $Object = @(
+
+                    [ordered]@{
+
+                        op      = 'replace'
+                        path    = '/membership'
+                        value   = [ordered]@{
+
+                            type        = 'IDENTITY_LIST'
+                            identities  = @(
+                                
+                                $IdentityList
+                                
+                            )
+
+                        }
+
+                    }
+
+                )
+
             }
 
-        )
+            "Standard"      {
+
+                $Object = @(
+
+                    [ordered]@{
+
+                        op      = 'replace'
+                        path    = '/membership'
+                        value   = $NewCriteria
+                        
+                    }
+
+                )
+
+            }
+
+        }
 
         $Body = ConvertTo-Json      -Depth  10      -InputObject    $Object
         $Call = Invoke-RestMethod   -Method "Patch" -Headers        $Tenant.TenantToken.Bearer  -Uri $Uri -ContentType "application/json-patch+json" -Body $Body
@@ -2767,7 +3578,7 @@ function Get-IdnPendingTasks                                    {
     
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Get-IdnQueue                                           {
     
     [CmdletBinding()]
@@ -2803,7 +3614,7 @@ function Get-IdnQueue                                           {
     
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Get-IdnJobs                                            {
     
     [CmdletBinding()]
@@ -2885,7 +3696,7 @@ function Set-IdnSource                                          {
 
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Get-IdnRules                                           {
     
     [CmdletBinding()]
@@ -2963,7 +3774,7 @@ function Get-IdnRule                                            {
     
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Get-IdnPasswordPolicies                                {
     
     [CmdletBinding()]
@@ -3201,19 +4012,19 @@ function Set-IdnSourcePasswordPolicy                            {
 
         $Object = @(
 
-            [ordered]@{
+        [ordered]@{
 
-                op = 'replace'
-                path = '/passwordPolicies'
-                value = [ordered]@{
+            op = 'replace'
+            path = '/passwordPolicies'
+            value = [ordered]@{
 
-                    type = 'PASSWORD_POLICY'
-                    id = $PolicyId
-                    name = $PwPolicyName
-
-                }
+                type = 'PASSWORD_POLICY'
+                id = $PolicyId
+                name = $PwPolicyName
 
             }
+
+        }
 
         )
 
@@ -3311,50 +4122,6 @@ function Get-IdnAccountHistory                                  {
 
         return $Call
         
-    }
-
-}
-
-# Update Identity Data (Not Working Yet)
-# Last check for V3/Beta was 12/28/23
-function Update-IdnIdentity                                     {
-
-    [CmdletBinding()]
-
-    param   (
-
-        # Account ID for the ID to update
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter Account ID or Alias of identity to update.")]
-        [string]$AccountId,
-
-        [string]$JsonPatch,
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
-        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
-        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
-
-    )
-
-    begin   {
-
-        $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "v2/identities/" + $AccountId
-
-    }
-
-    process {
-
-        $Call = Invoke-RestMethod -Method "Patch" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $JsonPatch -ContentType "application/json"
-
-    }
-
-    end     {
-
-        return $Call
-
     }
 
 }
@@ -4174,194 +4941,64 @@ function Set-IdnRoleCriteria                                    {
     
 }
 
-function New-IdnAccessProfileOld                                {
+function New-IdnAccessProfileProvisioningCriteria               {
 
     [CmdletBinding()]
+
+    param (
+
+        # Paramter for Group Operator.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify AND or OR as the opertaor Between Groups.")]
+        [ValidateSet( "AND" , "OR" )]
+        [string]$BetweenGroupOperator,
+
+        # Parameter for Attribute Name
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name of the account attribute.")]
+        [string]$AttributeName,
+
+        # Parameter attribute operator.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter comparison operator for attribute.")]
+        [ValidateSet( "EQUALS" , "NOT_EQUALS" , "CONTAINS" , "HAS" )]
+        [string]$AttributeOperator,
+
+        # Parameter for attribute value
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the value to look for.")]
+        [string]$AttributeValue
     
-    param   (
-
-        # Parameter for specifying the name of the Access Profile you'd like to create.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify name of the Access Profile you'd like to create.")]
-        [string]$Name,
-
-        # Parameter for specifying a descrption.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Specify a Description for the new Access Profile.")]
-        [string]$Description,
-
-        # Parameter for specifying the ID of the Source this Profile is for.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the 32 character ID of the Source this Profile is for.")]
-        [ValidateLength(32,32)]
-        [string]$SourceId,
-
-        # Parameter for entering Entitlements to assign.
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a list of IDs for Entitlements for this Profile to Grant.")]
-        [ValidateLength(32,32)]
-        [string[]]$EntitlmentIds,
-
-        # Parameter for specifying the Profle owner
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify the owner of the new Profile.")]
-        [string]$OwnerAlias,
-
-        # Parameter for specifying the Owner Type.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Specify what Type of Object the Owner is.  Default is Identity.")]
-        [ValidateSet("ACCOUNT_CORRELATION_CONFIG","ACCESS_PROFILE","ACCESS_REQUEST_APPROVAL","ACCOUNT","APPLICATION","CAMPAIGN"         ,
-        "CAMPAIGN_FILTER","CERTIFICATION","CLUSTER","CONNECTOR_SCHEMA","ENTITLEMENT","GOVERNANCE_GROUP","IDENTITY","IDENTITY_PROFILE"   ,
-        "IDENTITY_REQUEST","LIFECYCLE_STATE","PASSWORD_POLICY","ROLE","RULE","SOD_POLICY","SOURCE","TAG_CATEGORY","TASK_RESULT"         ,
-        "REPORT_RESULT","SOD_VIOLATION","ACCOUNT_ACTIVITY")]
-        [string]$OwnerType = "IDENTITY",
-
-        # Parameter for setting the Role as Enabled or Disabled.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Create the Profile as Enabled or Disabled, default is Enabled.")]
-        [bool]$Enabled = $true,
-
-        # Parameter for setting wich instance of SailPoint you are connecting to.
-        [Parameter(Mandatory = $false,
-        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
-        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
-        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
-        
     )
-    
-    begin   {
 
-        $Proceed    = $true
-        $Tenant     = Get-IdnTenantDetails -Instance $Instance
-        $Uri        = $Tenant.ModernBaseUri + "beta/access-profiles"
+    begin {
 
-        try     {
-
-            $OwnerInfo = Get-IdnIdentity -Id $OwnerAlias -Instance $Instance
-            
-            try {
-
-                $SourceInfo         = Get-IdnSourcesById    -SourceId $SourceId -Instance $Instance
-                $EntitlementList    = Get-IdnEntitlements   -SourceId $SourceId -Instance $Instance
-                $EntitlementInfo    = @()
-                
-                foreach ($Entitlment in $EntitlmentIds) {
-                    
-                    $EntitlementInfo += $EntitlementList | Where-Object {$_.id -eq $Entitlment}
-        
-                }
-
-                if ($EntitlementInfo.Count -lt 1) {
-
-                    $Proceed    = $false
-                    $Reason     = "Unalbe to find any Entitlements in the provided list within the Source $($SourceInfo.name).  Verify the IDs and try again."
-        
-                }
-
-            }
-
-            catch {
-
-                $Reason     = "Unabled to find the Source provided.  Verify the ID and try again."
-                $Proceed    = $false
-                
-            }
-
-        }        
-
-        catch   {
-
-            $Proceed    = $false
-            $Reason     = "Unable to find the Identity $OwnerAlias.  Verify this is the correct Alias."
-            
-        }        
+        $Criteria = [IdnProvisioningCriteriaAP]::new( $BetweenGroupOperator )
 
     }
-    
+
     process {
+
         
-        if ($Proceed) {
+        $Other = switch ($BetweenGroupOperator) {
 
-            $EntitlmentArray = @()
-            
-            foreach ($Entry in $EntitlementInfo) {
-
-                $EntitlmentArray += @{
-
-                    name    = $Entry.displayableName
-                    id      = $Entry.id 
-                    type    = "ENTITLEMENT"
-
-                }
-
-            }
-
-            $Object = @{
-
-                name            = $Name
-                description     = $Description
-                enabled         = $Enabled
-                owner           = @{
-
-                    type  = $OwnerType
-                    id    = $OwnerInfo.externalId
-
-                }
-
-                source          = @{
-
-                    id    = $SourceInfo.id
-                    type  = "SOURCE"
-                    name  = $SourceInfo.name
-
-                }
-
-                entitlements    = $EntitlmentArray
-                requestable     = $false
-                <# "accessRequestConfig": {
-                "commentsRequired": true,
-                "denialCommentsRequired": true,
-                "approvalSchemes": [
-                    {
-                    "approverType": "GOVERNANCE_GROUP",
-                    "approverId": "46c79819-a69f-49a2-becb-12c971ae66c6"
-                    }
-                ]
-                },
-                "revocationRequestConfig": {
-                "approvalSchemes": [
-                    {
-                    "approverType": "GOVERNANCE_GROUP",
-                    "approverId": "46c79819-a69f-49a2-becb-12c971ae66c6"
-                    }
-                ]
-                },
-                "segments": [
-                "f7b1b8a3-5fed-4fd4-ad29-82014e137e19",
-                "29cb6c06-1da8-43ea-8be4-b3125f248f2a"
-                ] #>
-            }
-
-            $Body = ConvertTo-Json -InputObject $Object -Depth 100
-            $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json"
-
-        }
-
-        else {
-
-            $Message  = "Refer to the above warning for details.  Critical information is missing or incorrect.  Access Profile has not been created.  "  
-            $Message += "Verify the details provided and try again."
-            Write-Warning $Reason
-            Write-Host "`n`n$Message `n" -ForegroundColor Yellow
-
+            "OR"    { "AND" }
+            "AND"   { "OR"  }
+        
         }
         
+        $ChildAttr = [IdnProvisioningCriteriaAP ]::new( $Other                                                  )
+        $ChildCrit = [IdnProvisioningChild      ]::new( $AttributeName , $AttributeOperator , $AttributeValue   )
+        
+        $ChildAttr.AddChildren( $ChildCrit )
+        $Criteria.AddChildren(  $ChildAttr )
+
     }
-    
-    end     {
 
-        return $Call
-        
+    end {
+
+        return $Criteria
+
     }
 
 }
@@ -4399,6 +5036,11 @@ function New-IdnAccessProfile                                   {
         HelpMessage = "Specify the owner of the new Profile.")]
         [ValidateLength(32,32)]
         [string]$OwnerId,
+
+        # Parameter for ProvisioningCriteria.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Pass a IdnProvisioningCriteriaAP object.")]
+        [IdnProvisioningCriteriaAP]$ProvisioningCriteria,
 
         # Parameter for specifying the Owner Type.
         [Parameter(Mandatory = $false,
@@ -4473,8 +5115,14 @@ function New-IdnAccessProfile                                   {
                 }
 
                 entitlements    = @($EntitlmentArray)
-                requestable    = $Requestable
+                requestable     = $Requestable
                
+            }
+
+            if ($ProvisioningCriteria) {
+
+                $Object.Add( 'provisioningCriteria' , $ProvisioningCriteria )
+
             }
 
             $Body = ConvertTo-Json -InputObject $Object -Depth 100
@@ -4743,7 +5391,7 @@ function Search-IdnIdentities                                   {
         [Parameter(ParameterSetName = "Domain",
         Mandatory = $true,
         HelpMessage = "Enter the domain to search for here.")]
-        [ValidateScript( { ( if ($_ -notlike "*@*" ) { $true } else { throw "$_ contains an '@' symbol.  This is included in the query and cannot be part of the value passed." } ) } ) ]
+        [ValidateScript( { if ($_ -notlike "*@*" ) { $true } else { throw "$_ contains an '@' symbol.  This is included in the query and cannot be part of the value passed." } } ) ]
         [string]$EmailDomain,
         
         # Parameter for specifying Life Cycle State.
@@ -4815,7 +5463,7 @@ function Search-IdnIdentities                                   {
             'LastName'              { $SearchStrings += '(attributes.lastname:"'            + $LastName         + '")'          } 
             'FirstName'             { $SearchStrings += '(attributes.firstname:"'           + $FirstName        + '")'          } 
             'EmailAddress'          { $SearchStrings += '(attributes.email:"'               + $EmailAddress     + '")'          }
-            'EmailDomain'           { $SearchStrings += '(attributes.email:"'               + $EmailDomain      + '*@")'        }
+            'EmailDomain'           { $SearchStrings += '(attributes.email:"*@'             + $EmailDomain      + '")'          }
             'LifeCycleState'        { $SearchStrings += '(attributes.cloudLifecycleState:"' + $LifeCycleState   + '")'          }
             'SourceName'            { $SearchStrings += '@accounts(source.name:"'           + $SourceName       + '")'          }
             'LongSourceID'          { $SearchStrings += '@accounts(source.id:"'             + $LongSourceID     + '")'          }
@@ -5472,6 +6120,59 @@ function Move-IdnAccountToNewIdentity                           {
 
 }
 
+function Remove-IdnAccountFromIdentity                          {
+
+    [CmdletBinding()]
+    
+    param   (
+        
+        # Parameter the Account ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Long ID for the Account to move.")]
+        [ValidateLength(32,32)]
+        [string]$AccountID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = $Tenant.ModernBaseUri + "v3/accounts/" + $AccountID 
+        
+    }
+    
+    process {
+
+        $Object = @(
+
+            @{
+
+                op      = "remove"
+                path    = "/identityId"
+
+            }
+
+        )
+
+        $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
+        $Call = Invoke-WebRequest   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json-patch+json"
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+}
+
 function Get-IdnIdentityRoles                                   {
     
     [CmdletBinding()]
@@ -5565,7 +6266,7 @@ function Get-IdnIdentities                                      {
 
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Reset-IdnSource                                        {
 
     [CmdletBinding()]
@@ -5695,103 +6396,6 @@ function Get-IdnManagedClientStatus                             {
 
         return $Call
 
-    }
-
-}
-
-function Initialize-IdnTransformRule                            {
-
-    [CmdletBinding()]
-    
-    param   (
-
-        [Parameter( ParameterSetName = 'AccountAttributeRule'   , Mandatory = $false )][Switch]$AccountAttributeRule    ,
-        [Parameter( ParameterSetName = 'FirstValidRule'         , Mandatory = $false )][Switch]$FirstValidRule          ,
-        [Parameter( ParameterSetName = 'LookupRule'             , Mandatory = $false )][Switch]$LookupRule              ,
-
-        # Parameter for the Rule Name
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter a name for the new Transform Rule.")]
-        [string]$RuleName,
-
-        # Parameter for the Source ID.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $true,
-        HelpMessage = "Enter the Long ID for the Source.")]
-        [ValidateLength(32,32)]
-        [string]$LongSourceID,
-
-        # Parameter for the Attribute Name.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $true,
-        HelpMessage = "Enter the name of the Account Attribute to retrieve.")]
-        [string]$AccountAttibuteName,
-        
-        # Parameter for the Account Property Filter.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Enter the Account Property Filter Criteria.")]
-        [string]$AccountPropertyFilter,
-        
-        # Parameter for the Account Filter.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Enter the Filter Criteria.")]
-        [string]$AccountFilter,
-
-        # Parameter for the Sort Attribute.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Enter the Account Attribute to sort by.")]
-        [string]$SortAttribute,
-
-        # Switch for the returning first link only.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Switch to return only the first account.")]
-        [switch]$ReturnFirstOnly,
-
-        # Switch for the Sort Attribute.
-        [Parameter(ParameterSetName = "AccountAttributeRule",
-        Mandatory = $false,
-        HelpMessage = "Switch to set the sort order to Descending.")]
-        [switch]$EnableDescendingSort
-
-    )
-    
-    begin   {
-
-        $Type = $PSCmdlet.ParameterSetName
-        $Rule = New-Object -TypeName $Type
-        
-    }
-    
-    process {
-
-        switch ($Type) {
-
-            "AccountAttributeRule"  { $Rule.SetRequiredAttributes( $LongSourceID , $RuleName , $AccountAttibuteName ) }              
-            "FirstValidRule"        { $Rule.SetRequiredAttributes( $RuleName                                        ) }
-            "LookupRule"            { $Rule.SetRequiredAttributes( $RuleName                                        ) }
-        
-        }
-
-        switch ($PSBoundParameters.Keys) {
-
-            "AccountFilter"         { $Rule.SetAccountFilter(           $AccountFilter          ) }     
-            "AccountPropertyFilter" { $Rule.SetAccountPropertyFilter(   $AccountPropertyFilter  ) }  
-            "SortAttribute"         { $Rule.SetSortProperty(            $SortAttribute          ) }
-            "ReturnFirstOnly"       { $Rule.EnableReturnFirstLink(                              ) }
-            "EnableDescendingSort"  { $Rule.EnableDescendingSort(                               ) }
-
-        }
-        
-    }
-    
-    end     {
-
-        return $Rule
-        
     }
 
 }
@@ -6331,7 +6935,7 @@ function Add-IdnRoleCriteria                                    {
     
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Import-IdnSourceEntitlements                           {
 
     [CmdletBinding()]
@@ -6393,7 +6997,7 @@ function Import-IdnSourceEntitlements                           {
 
 }
 
-# Last Check for V3/Beta was 12/28/2023
+# Last Check for V3/Beta was 02/14/2024
 function Import-IdnSourceAccounts                               {
 
     [CmdletBinding()]
@@ -6519,7 +7123,7 @@ function Get-IdnTaskStatus                                      {
     
     process {
         
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Token 
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
         
     }
     
@@ -6560,7 +7164,7 @@ function Complete-IdnTask                                       {
     
     process {
 
-        $Task = Get-IdnIdentityTaskStatus -Token $Token -TaskID $TaskID -Instance $Instance
+        $Task = Get-IdnIdentityTaskStatus -TaskID $TaskID -Instance $Instance
 
         if ($Task) {
 
@@ -6589,7 +7193,7 @@ function Complete-IdnTask                                       {
             )
 
             $Body = ConvertTo-Json      -InputObject    $Object -Depth  10
-            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Token -Body $Body
+            $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -ContentType "application/json-patch+json" -Headers $Tenant.TenantToken.Bearer -Body $Body
             
         }
 
@@ -6607,7 +7211,7 @@ function New-IdnRoleCriteria                                    {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Parameter for Between Groups Operator.
         [Parameter(Mandatory = $true,
@@ -6624,7 +7228,7 @@ function New-IdnRoleCriteria                                    {
         
     )
     
-    begin {
+    begin   {
 
         #CriteriaObj        = New-Object -TypeName "RoleCriteriaChildItem"
         $StandardCriteria   = New-Object -TypeName "StandardRoleCriteria"
@@ -6650,7 +7254,7 @@ function New-IdnRoleCriteria                                    {
         
     }
     
-    end {
+    end     {
 
         return $StandardCriteria
         
@@ -6662,7 +7266,7 @@ function New-IdnRoleChild                                       {
 
     [CmdletBinding()]
     
-    param (
+    param   (
 
         # Switch for Identity Child.
         [Parameter(Mandatory = $false,
@@ -6740,7 +7344,7 @@ function New-IdnRoleChild                                       {
         
     )
     
-    begin {
+    begin   {
 
         $ChildItem = New-Object -TypeName "RoleCriteriaChildItem"
 
@@ -6760,12 +7364,274 @@ function New-IdnRoleChild                                       {
         
     }
     
-    end {
+    end     {
 
         return $ChildItem
         
     }
 
+}
+
+# Last Check for V3/Beta was 02/14/2024
+function Start-IdnEntitlementAggregation                        {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Source ID
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Source's Cloud External ID to refresh Entitlment's for.")]
+        [string]$CloudExternalID,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+        
+    )
+    
+    begin {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}cc/api/source/loadEntitlements/{1}" -f $Tenant.ModernBaseUri , $CloudExternalID
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end {
+
+        return $Call
+        
+    }
+
+}
+
+# Last Check for V3/Beta was 02/14/2024
+function Start-IdnAccountAggregation                            {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Source ID
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Source's Cloud External ID to refresh Entitlment's for.")]
+        [string]$CloudExternalID,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+                
+    )
+    
+    begin {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}cc/api/source/loadAccounts/{1}" -f $Tenant.ModernBaseUri , $CloudExternalID
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end {
+
+        return $Call
+        
+    }
+
+}
+
+function ConvertTo-IdnStandardRoleCriteria                      {
+    
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Role Criteria
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Standard Role Criteria.")]
+        [StandardRoleCriteria]$RoleCriteria
+        
+    )
+        
+    end {
+
+        return [StandardRoleCriteria]$RoleCriteria
+        
+    }
+
+}
+
+function Get-IdnConnectorList                                   {
+
+    [CmdletBinding()]
+    
+    param (
+        
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+                
+    )
+    
+    begin {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/connectors" -f $Tenant.ModernBaseUri
+        
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end {
+
+        $Call
+        
+    }
+
+}
+
+function New-IdnSource                                          {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for Connector Script.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Connector Script for the Connector this Source will use.",
+        ParameterSetName = "DelimitedFile")]
+        [switch]$DelimitedFile,
+    
+        # Parameter Source Name
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name for the new Source.")]
+        [string]$Name,
+
+        # Parameter for Description
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a brief description for the source.")]
+        [string]$Description,
+
+        # Parameter for Owner ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Owner's ID.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$OwnerID,
+        
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+                
+    )
+    
+    begin {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/sources" -f $Tenant.ModernBaseUri
+        
+    }
+    
+    process {
+
+        $Owner = Get-IdnIdentity -Id $OwnerID -Instance $Instance
+        
+        if ( $OwnerID -eq $Owner.id ) {
+
+            switch ($PSCmdlet.ParameterSetName) {
+
+                "DelimitedFile" {
+
+                    $Uri       += "?provisionAsCsv=true"
+                    $ConScript  = "delimited-file-angularsc"
+
+                }
+
+                Default         {
+                
+                    throw "$($PSCmdlet.ParameterSetName) has not been configured yet."
+                
+                }
+
+            }
+        
+            $Config = [IdnSource]::new( $Name , $Description , $ConScript , $OwnerID , $Owner.name )
+            $Body   = ConvertTo-Json    -InputObject    $Config -Depth  10
+            $Call   = Invoke-RestMethod -Method         "Post"  -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -ContentType 'application/json' -Body $Body
+
+        }
+        
+    }
+    
+    end {
+
+        return $Call
+        
+    }
+
+}
+
+function Remove-IdnSource                                       {
+
+    [CmdletBinding()]
+    
+    param (
+
+        # Parameter for ID.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the ID of the Source to delete.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$ID,
+        
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+                
+    )
+    
+    begin {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/sources/{1}" -f $Tenant.ModernBaseUri , $ID
+        
+    }
+
+    process {
+
+        $Call = Invoke-RestMethod -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+
+    }
+
+    end {
+
+        return $Call
+
+    }
+    
 }
 
 <#
