@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.63'
+    ModuleVersion = '1.64'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -30,7 +30,7 @@
     Copyright = '(c) 2021 Derek Brown. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description  = "This module contains functions to help manage SailPoint IdentityNow tenants.  The functions use various versions of SailPoint's APIs.  The only change required is updating the 'OrgName' variable in the .psm1 file with your tenant name."
+    Description  = "This module contains Functions and Classes to help manage SailPoint IdentityNow tenants."
 
     # Minimum version of the Windows PowerShell engine required by this module
     # PowerShellVersion = ''
@@ -90,13 +90,14 @@
         "Remove-IdnAccessProfileFromRole"               ,
         "Add-IdnAccessProfileEntitlments"               ,
         "Get-IdnRoleMembershipCriteria"                 ,
+        "Remove-IdnAccountFromIdentity"                 ,
         "Receive-IdnConfigExportStatus"                 ,
         "Import-IdnSourceEntitlements"                  ,
         "Invoke-IdnAccountAggregation"                  ,
         "Move-IdnAccountToNewIdentity"                  ,
         "Get-IdnIdentityEventHistory"                   ,
-        "Initialize-IdnTransformRule"                   ,
         "Set-IdnSourcePasswordPolicy"                   ,
+        "Remove-IdnIdentityAttribute"                   ,
         "Start-IdnAccountAggregation"                   ,
         "Write-IdnLifeCycleJsonPatch"                   ,
         "Add-IdnAccessProfileToRole"                    ,
@@ -104,15 +105,16 @@
         "Get-IdnConfigObjectDetails"                    ,
         "Get-IdnManagedClientStatus"                    ,
         "Get-IdnConfigExportStatus"                     ,
+        "Get-IdnIdentityAttributes"                     ,
         "New-IdnConnectionSettings"                     ,
         "Set-IdnIdentityAdminRoles"                     ,
+        "Get-IdnIdentityAttribute"                      ,
         "Start-IdnIdentityRefresh"                      ,
         "Import-IdnSourceAccounts"                      ,
         "Update-IdnLifeCycleState"                      ,
         "Get-IdnIdentityProfiles"                       ,
         "Get-IdnIdentitySnapShot"                       ,
         "Get-IdnPasswordPolicies"                       ,
-        "Update-IdnTransformRule"                       ,
         "Get-IdnAccountActivity"                        ,
         "Get-IdnTaskStatusLists"                        ,
         "Get-IdnIdentityProfile"                        ,
@@ -120,12 +122,12 @@
         "Get-IdnLifeCycleStates"                        ,
         "Get-IdnManagedClusters"                        ,
         "Get-IdnAccessProfiles"                         ,
+        "New-IdnTransformLogic"                         ,
         "Get-IdnAccountHistory"                         ,
         "Get-IdnRoleMembership"                         ,
         "Get-IdnLifeCycleState"                         ,
         "Get-IdnManagedCluster"                         ,
         "Get-IdnPasswordPolicy"                         ,
-        "Get-IdnTransformRules"                         ,
         "New-IdnLifeCycleState"                         ,
         "New-IdnPasswordPolicy"                         ,
         "Set-IdnDefaultTentant"                         ,
@@ -136,25 +138,28 @@
         "Get-IdnIdentityRoles"                          ,
         "Get-IdnInactiveUsers"                          ,
         "Get-IdnConnectorList"                          ,
+        "Publish-IdnTransform"                          ,
         "Get-IdnSourceSchemas"                          ,
         "New-IdnAccessProfile"                          ,
-        "New-IdnTransformRule"                          ,
         "Get-IdnTenantContext"                          ,
         "Search-IdnIdentities"                          ,
         "Add-IdnRoleCriteria"                           ,
         "Get-IdnEntitlements"                           ,
         "New-IdnRoleCriteria"                           ,
+        "Remove-IdnTransform"                           ,
         "Get-IdnPendingTasks"                           ,
+        "Update-IdnTransform"                           ,
         "Set-IdnRoleCriteria"                           ,
         "Get-IdnAccountList"                            ,
         "Get-IdnEntitlement"                            ,
         "Get-IdnSourcesById"                            ,
         "Update-IdnOrgNames"                            ,
         "Remove-IdnIdentity"                            ,
-        #Update-IdnIdentity"                            ,
         "Get-IdnTaskStatus"                             ,
+        "Get-IdnTransforms"                             ,
         "Get-IdnIdentities"                             ,
         "Search-IdnCustom"                              ,
+        "Get-IdnTransform"                              ,
         "New-IdnRoleChild"                              ,
         "Remove-IdnSource"                              ,
         "Complete-IdnTask"                              ,
