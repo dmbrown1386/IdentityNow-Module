@@ -5,7 +5,7 @@
  | Title         : IdnTools.psm1                                                                                                                                                                             |
  | By            : Derek Brown                                                                                                                                                                               |
  | Created       : 06/03/2021                                                                                                                                                                                |
- | Last Modified : 02/26/2024                                                                                                                                                                                |
+ | Last Modified : 03/01/2024                                                                                                                                                                                |
  | Modified By   : Derek Brown                                                                                                                                                                               |
  |                                                                                                                                                                                                           |
  | Description   : Set of PowerShell Commands designed to                                                                                                                                                    |
@@ -66,6 +66,9 @@
  |                 aggregation cmdlts & Classes for |                 in Update function.              |                 delimited file sources and for   |                 Transforms and getting Identity  |
  |                 Provisioning Criteria on APs.    |                                                  |                 deleting source schemas.         |                 Attributes                       |
  |                                                  |                                                  |                                                  |                                                  |
+ | Version: 1.65 - Added commands to create, test & |                                                  |                                                  |                                                  |
+ |                 patch Identity Attributes.       |                                                  |                                                  |                                                  |
+ |                                                  |                                                  |                                                  |                                                  |
  |__________________________________________________|__________________________________________________|__________________________________________________|__________________________________________________|
  
 #>
@@ -85,7 +88,7 @@ class IdnPAT                                                    {
     [string         ]$ClientID 
     [securestring   ]$ClientSecret
 
-    IdnPAT( [string] $ID , [securestring]$Secret ) {
+    IdnPAT( [string]$ID , [securestring]$Secret ) {
 
         $this.ClientID      = $ID
         $this.ClientSecret  = $Secret
@@ -263,9 +266,10 @@ class IdnTransformLogicBase                                     {
 
 }
 
-class IdnIdentityAttributePatchNewLogic                         {
+class IdnIdentityAttributePatch<# NewLogic #>                         {
 
-    [ValidateSet( "add" , "remove" , "replace" , "move" , "copy" , "test" )][string]$op
+    [ValidateSet( "add" , "remove" , "replace" , "move" , "copy" , "test" )]
+    [string     ]$op
     [string     ]$path
     [hashtable  ]$value = @{
 
@@ -537,14 +541,14 @@ class DateFormatLogic       : IdnTransformLogicBase              {
 
 class StaticLogic           : IdnTransformLogicBase              {
 
-    StaticRule( ) {
+    StaticLogic(                    ) {
 
         $this.type = "static"
         $this.attributes.Add( "value" , "" )
 
     }
 
-    SetRequiredAttributes( $Value ) {
+    SetRequiredAttributes( $Value   ) {
 
         $this.attributes.value = $Value
 
@@ -570,17 +574,16 @@ class DateCompareLogic      : IdnTransformLogicBase              {
 
     }
 
-    AddSecondDateTransfrom(  $Logic ) { $this.attributes.secondDate = $Logic    }
-    AddFirstDateTransfrom(   $Logic ) { $this.attributes.firstDate  = $Logic    }
-    AddSecondDateStaticDate( $Date  ) { $this.attributes.secondDate = $Date.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff-00")     }
-    #AddSecondDateStaticDate( $Date  ) { $this.attributes.secondDate = $Date.ToUniversalTime().ToString("s")     }
-    AddFirstDateStaticDate(  $Date  ) { $this.attributes.firstDate  = $Date.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff-00")     }
-    SetFirstDateToNow(              ) { $this.attributes.firstDate  = "now"     }
-    SetSecondDatToNow(              ) { $this.attributes.secondDate = "now"     }
+    AddSecondDateTransfrom(  $Logic ) { $this.attributes.secondDate = $Logic                                        }
+    AddFirstDateTransfrom(   $Logic ) { $this.attributes.firstDate  = $Logic                                        }
+    AddSecondDateStaticDate( $Date  ) { $this.attributes.secondDate = $Date.ToString("yyyy-MM-ddTHH:mm:ss.fffzz")   }
+    AddFirstDateStaticDate(  $Date  ) { $this.attributes.firstDate  = $Date.ToString("yyyy-MM-ddTHH:mm:ss.fffzz")   }
+    SetFirstDateToNow(              ) { $this.attributes.firstDate  = "now"                                         }
+    SetSecondDateToNow(             ) { $this.attributes.secondDate = "now"                                         }
 
 }
 
-class ReferencePatchAdd     : IdnIdentityAttributePatchNewLogic {
+class ReferencePatchAdd     : IdnIdentityAttributePatch<# NewLogic #> {
 
     [void]ProvideRequiredProperties( [int32]$InsertPosition , [string]$TransfromName , [string]$IdentityAttributeName ) {
 
@@ -599,7 +602,7 @@ class ReferencePatchAdd     : IdnIdentityAttributePatchNewLogic {
 
 }
 
-class ReferencePatchReplace : IdnIdentityAttributePatchNewLogic {
+class ReferencePatchReplace : IdnIdentityAttributePatch<# NewLogic #> {
 
     [void]ProvideRequiredProperties( [int32]$InsertPosition , [string]$TransfromName , [string]$IdentityAttributeName , [string]$Name , [string]$ID , [string]$Attr ) {
 
@@ -624,19 +627,20 @@ class ReferencePatchReplace : IdnIdentityAttributePatchNewLogic {
 
 }
 
-class ReferencePatch        : IdnIdentityAttributePatchNewLogic {
+class ReferencePatch        : IdnIdentityAttributePatch<# NewLogic #> {
 
-    [void]ProvideRequiredProperties( [int32]$InsertPosition , [string]$TransfromName , [string]$IdentityAttributeName , [string]$Name , [string]$ID , [string]$Attr ) {
+    [void]ProvideRequiredProperties( $Op , [int32]$Spot , [string]$TransfromName , [string]$IdentityAttributeName , [string]$Name , [string]$ID , [string]$Attr ) {
 
-        $this.path  = "/identityAttributeConfig/attributeTransforms/$InsertPosition"
-        $this.value.transformDefinition.attributes.Add( "id"    , $TransfromName ) 
-        $this.value.transformDefinition.attributes.Add( "input" , @{} ) 
-        $this.value.transformDefinition.attributes.input.Add( "attributes" , @{} ) 
-        $this.value.transformDefinition.attributes.input.Add( "type"       , 'accountAttribute' ) 
-        $this.value.transformDefinition.attributes.input.attributes.Add( "sourceName"       , $Name ) 
-        $this.value.transformDefinition.attributes.input.attributes.Add( "attributeName"    , $Attr ) 
-        $this.value.transformDefinition.attributes.input.attributes.Add( "sourceId"         , $ID   ) 
-        $this.value.identityAttributeName = $IdentityAttributeName
+        $this.op                            = $Op
+        $this.path                          = "/identityAttributeConfig/attributeTransforms/$Spot"
+        $this.value.identityAttributeName   = $IdentityAttributeName
+        $this.value.transformDefinition.attributes.Add(                     "id"            , $TransfromName        ) 
+        $this.value.transformDefinition.attributes.Add(                     "input"         , @{}                   ) 
+        $this.value.transformDefinition.attributes.input.Add(               "attributes"    , @{}                   ) 
+        $this.value.transformDefinition.attributes.input.Add(               "type"          , 'accountAttribute'    ) 
+        $this.value.transformDefinition.attributes.input.attributes.Add(    "sourceName"    , $Name                 ) 
+        $this.value.transformDefinition.attributes.input.attributes.Add(    "attributeName" , $Attr                 ) 
+        $this.value.transformDefinition.attributes.input.attributes.Add(    "sourceId"      , $ID                   ) 
     
     }
 
@@ -648,12 +652,12 @@ class ReferencePatch        : IdnIdentityAttributePatchNewLogic {
 
 }
 
-class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
+class AccountAttributePatch : IdnIdentityAttributePatch<# NewLogic #> {
 
-    [void]ProvideRequiredProperties( [string]$Operation, [int32]$InsertPosition , [string]$IdentityAttributeName , [string]$ID , [string]$Name , [string]$AccountAttributeName ) {
+    [void]ProvideRequiredProperties( [int32]$Spot , [string]$IdentityAttributeName , [string]$ID , [string]$Name , [string]$AccountAttributeName ) {
 
-        $this.op                            = $Operation
-        $this.path                          = "/identityAttributeConfig/attributeTransforms/$InsertPosition"
+        $this.op                            = "replace"
+        $this.path                          = "/identityAttributeConfig/attributeTransforms/$Spot"
         $this.value.identityAttributeName   = $IdentityAttributeName
         $this.value.transformDefinition.attributes.Add( "sourceName"    , $Name                 ) 
         $this.value.transformDefinition.attributes.Add( "attributeName" , $AccountAttributeName ) 
@@ -664,6 +668,26 @@ class AccountAttributePatch : IdnIdentityAttributePatchNewLogic {
     AccountAttributePatch() {
 
         $this.value.transformDefinition.type = "accountAttribute"
+
+    }
+    
+}
+
+class RulePatch             : IdnIdentityAttributePatch<# NewLogic #> {
+
+    [void]ProvideRequiredProperties( [int32]$Spot , [string]$IdentityAttributeName , [string]$ID , [string]$Name ) {
+
+        $this.op                            = "replace"
+        $this.path                          = "/identityAttributeConfig/attributeTransforms/$Spot"
+        $this.value.identityAttributeName   = $IdentityAttributeName
+        $this.value.transformDefinition.attributes.Add( "name"  , $Name   ) 
+        $this.value.transformDefinition.attributes.Add( "id"    , $ID     ) 
+    
+    }
+
+    RulePatch() {
+
+        $this.value.transformDefinition.type = "rule"
 
     }
     
@@ -920,6 +944,13 @@ function Test-IdnToken                                          {
  |                           |
  | START OF PUBLIC FUNCTIONS |
  |___________________________|
+
+#>
+
+<#
+
+    Set Identity Life Cycle State   - Updated but not Tested
+    Set Identity Admin Roles        - Updated but not Tested
 
 #>
 
@@ -1421,7 +1452,7 @@ function Remove-IdnIdentity                                     {
     
     process {
 
-        $Call = Invoke-WebRequest -Method "Delete" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri | Select-Object StatusCode
+        $Call = Invoke-WebRequest -Method "Delete" -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Uri $Uri | Select-Object "StatusCode","StatusDescription"
                     
     }
     
@@ -1481,7 +1512,7 @@ function Get-IdnIdentitySnapShot                                {
 }
 
 # V3 version found: https://developer.sailpoint.com/idn/api/v3/set-lifecycle-state
-function Set-IdnIdentity                                        {
+function Set-IdnIdentityLifeCycleState                          {
 
     [CmdletBinding()]
     
@@ -1489,15 +1520,15 @@ function Set-IdnIdentity                                        {
 
         # Parameter for User's Alias to be refreshed.
         [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the Alias of the Identity to Refresh")]
-        #[Alias("Name")]
+        HelpMessage = "Enter the ID of the Identity to update.")]
+        [ValidateLength( 32 , 32 )]
         [string]$IdentityId,
 
         # Parameter for Life Cycle State
         [Parameter(Mandatory = $true,
-        HelpMessage = "Select a LifeCycle State to change to.")]
-        [ValidateSet("active","terminated","terminated2","terminated3")]
-        [string]$LifeCycleState,
+        HelpMessage = "Enter the ID of the LifeCycle State to change to.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$LifeCycleStateId,
 
         [Parameter(Mandatory = $false,
         HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
@@ -1509,7 +1540,7 @@ function Set-IdnIdentity                                        {
     begin   {
 
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = $Tenant.ModernBaseUri + "cc/api/user/updateLifecycleState"
+        $Uri    = "{0}v3/identities/{1}/set-lifecycle-state" -f $Tenant.ModernBaseUri , $IdentityId
 
     }
     
@@ -1517,10 +1548,9 @@ function Set-IdnIdentity                                        {
 
         $Body = @{
 
-            id              = $IdentityId
-            lifecycleState  = $LifeCycleState
+            lifecycleStateId = $LifeCycleState
 
-        } | ConvertTo-Json -Depth 10
+        } | ConvertTo-Json
 
         $Call = Invoke-RestMethod -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json"
         
@@ -1590,6 +1620,107 @@ function Set-IdnIdentityAdminRoles                              {
         } | ConvertTo-Json -Depth 10
 
         $Call = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Body $Body -ContentType "application/json" | Select-Object StatusCode,StatusDescription
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+}
+
+function Get-IdnIdentityAdminRoles                              {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for User's Alias to be refreshed.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Alias of the Identity to Refresh")]
+        [string]$IdentityId,
+
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/auth-users/{1}" -f $Tenant.ModernBaseUri , $IdentityId
+
+    }
+    
+    process {
+
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+}
+
+function Update-IdnIdentityAdminRoles                           {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for User's Alias to be refreshed.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Alias of the Identity to Refresh")]
+        [string]$IdentityId,
+
+        # Parameter for listing Admin Roles
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Select the Admin Roles to apply to the Identity.  This will replace all current Roles assigned.")]
+        [Alias("Capabilities")]
+        [string[]]$AdminRoles,
+
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/auth-users/{1}" -f $Tenant.ModernBaseUri , $IdentityId
+
+    }
+    
+    process {
+
+        $Patch = @(
+
+            @{
+
+                op = "replace"
+                path = "/capabilities"
+                value = @(
+                    
+                    $AdminRoles
+                    
+                )
+
+            }
+
+        )
+
+        $Body = ConvertTo-Json      -InputObject    $Patch  -Depth  10
+        $Call = Invoke-RestMethod   -Method         "Patch" -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json-patch+json" -Body $Body
         
     }
     
@@ -2144,6 +2275,213 @@ function Remove-IdnProvisioningPoliciesForSource                {
         
     }
 
+}
+
+function New-IdnIdentityAttribute                               {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the the Technical Name for the new Attribute.")]
+        [string]$Name,
+    
+        # Parameter for Display Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the the Display Name for the new Attribute.")]
+        [string]$DisplayName,
+
+        # Parameter for Type.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Type for this Attribute.  The default value is 'String' type.")]
+        [string]$Type = "string",
+    
+        # Parameter for Standard.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this will be Standard Attribute.")]
+        [bool]$Standard = $false,
+    
+        # Parameter for Multiple Values.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this Attribute will be multi valued.")]
+        [bool]$MultiValued = $false,
+    
+        # Parameter for Searchable.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this will be a searchable Attribute.")]
+        [bool]$Searchable = $false,
+    
+        # Parameter for System.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this will be System Attribute.")]
+        [bool]$System = $false,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}beta/identity-attributes" -f $Tenant.ModernBaseUri
+        
+    }
+    
+    process {
+
+        $Attr = @{
+
+            name        = $Name
+            displayName = $DisplayName
+            standard    = $Standard
+            type        = $Type
+            multi       = $MultiValued
+            searchable  = $Searchable
+            system      = $System
+            sources     = @()
+
+        }
+
+        $Body   = ConvertTo-Json -InputObject $Attr -Depth 10
+        $Params = @{
+
+            Method      = "Post"
+            ContentType = "application/json"
+            Uri         = $Uri
+            Headers     = $Tenant.TenantToken.Bearer
+            Body        = $Body 
+
+        }
+
+        if ( $PSEdition -eq "Core" ) { $Params.Add( "AllowInsecureRedirect" , $true ) }
+
+        $Call = Invoke-RestMethod @Params
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+} 
+
+function Set-IdnIdentityAttribute                               {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the the Technical Name for the new Attribute to change.")]
+        [string]$Name,
+    
+        # Parameter for New Name.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the the New Technical Name for the new Attribute.")]
+        [string]$NewName,
+    
+        # Parameter for Display Name.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the the Display Name for the new Attribute.")]
+        [string]$DisplayName,
+
+        # Parameter for Type.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Enter the Type for this Attribute.  The default value is 'String' type.")]
+        [string]$Type,
+    
+        # Parameter for Standard.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this will be Standard Attribute.")]
+        [bool]$Standard,
+    
+        # Parameter for Multiple Values.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this Attribute will be multi valued.")]
+        [bool]$MultiValued,
+    
+        # Parameter for Searchable.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this will be a searchable Attribute.")]
+        [bool]$Searchable,
+    
+        # Parameter for System.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Boolean parameter for whether or not this will be System Attribute.")]
+        [bool]$System,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}beta/identity-attributes/{1}" -f $Tenant.ModernBaseUri , $Name
+        $Attr   = @{}
+    }
+    
+    process {
+
+        if ($NewName) {
+
+            $Attr.Add( "name" , $NewName )
+
+        }
+
+        else {
+
+            $Attr.Add( "name" , $Name )
+
+        }
+
+        switch ($PSBoundParameters.Keys) {
+
+            "DisplayName"   { $Attr.Add( "displayName"  , $DisplayName  ) }
+            "Standard"      { $Attr.Add( "standard"     , $Standard     ) }
+            "Type"          { $Attr.Add( "type"         , $Type         ) }
+            "MultiValued"   { $Attr.Add( "multi"        , $MultiValued  ) }
+            "Searchable"    { $Attr.Add( "searchable"   , $Searchable   ) }
+            "System"        { $Attr.Add( "system"       , $System       ) }
+
+        }
+
+        $Body   = ConvertTo-Json -InputObject $Attr -Depth 10
+        $Params = @{
+
+            Method      = "Put"
+            ContentType = "application/json"
+            Uri         = $Uri
+            Headers     = $Tenant.TenantToken.Bearer
+            Body        = $Body 
+
+        }
+
+        if ( $PSEdition -eq "Core" ) { $Params.Add( "AllowInsecureRedirect" , $true ) }
+
+        $Call = Invoke-RestMethod @Params
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
 } 
 
 function Get-IdnIdentityAttributes                              {
@@ -2249,7 +2587,60 @@ function Remove-IdnIdentityAttribute                            {
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer 
+        $Call = Invoke-WebRequest -Method "Delete" -Uri $Uri -Headers $Tenant.TenantToken.Bearer | Select-Object "StatusCode","StatusDescription"
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
+} 
+
+function Remove-IdnIdentityAttributes                           {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter for Attribute Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the name of the Identity Attribute to retrieve.")]
+        [string[]]$Names,
+    
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+    
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}beta/identity-attributes/bulk-delete" -f $Tenant.ModernBaseUri
+        $List   = @{
+
+            ids = @()
+
+        }
+        
+    }
+    
+    process {
+
+        foreach ( $Attribute in $Names ) {
+
+            $Lookup = Get-IdnIdentityAttribute -Name $Attribute -Instance $Instance
+            $List.ids += $Lookup.name
+
+        }
+
+        $Body = ConvertTo-Json      -InputObject    $List   -Depth  10
+        $Call = Invoke-WebRequest   -Method         "Post"  -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" -Body $Body | Select-Object "StatusCode","StatusDescription"
         
     }
     
@@ -2336,7 +2727,7 @@ function Get-IdnTransform                                       {
 
 }
 
-function Remove-IdnTransform                                       {
+function Remove-IdnTransform                                    {
 
     [CmdletBinding()]
     
@@ -2592,7 +2983,7 @@ function New-IdnTransformLogic                                  {
 
         # Parameter for Static String.
         [Parameter(Mandatory = $true,
-        ParameterSetName = "StaticRule",
+        ParameterSetName = "StaticLogic",
         HelpMessage = "Enter the value of the Static String to use.")]
         [string]$StaticString,
 
@@ -2737,6 +3128,7 @@ function New-IdnTransformLogic                                  {
 
         # Parameter second date static.
         [Parameter(Mandatory = $false,
+        ParameterSetName = "DateCompareLogic",
         HelpMessage = "Enter datetime value to test against as the Second Date.")]
         [datetime]$TestAgainstStaticDate,
 
@@ -2765,31 +3157,30 @@ function New-IdnTransformLogic                                  {
 
         switch ($Type) {
 
-            "AccountAttributeLogic"  { $Rule.SetRequiredAttributes( $LongSourceID , <# $RuleName , #> $AccountAttibuteName ) }
-            "ConditionalLogic"       { $Rule.SetRequiredAttributes( $ValueToTest , $ValueToTestAgainst , $ResultIfTrue , $ResultIfFalse ) }
-            "DateCompareLogic"       { $Rule.SetRequiredAttributes( $Operator , $PositiveCondition , $NegativeCondition ) }
-            "StaticRule"            { $Rule.SetRequiredAttributes( $StaticString ) }
-            #Default                 { throw "$Type has not be configured yet.  You will need to write your transform manually." }
+            "StaticLogic"               { $Rule.SetRequiredAttributes( $StaticString                                                                        ) }
+            "AccountAttributeLogic"     { $Rule.SetRequiredAttributes( $LongSourceID    , $AccountAttibuteName                                              ) }
+            "DateCompareLogic"          { $Rule.SetRequiredAttributes( $Operator        , $PositiveCondition    , $NegativeCondition                        ) }
+            "ConditionalLogic"          { $Rule.SetRequiredAttributes( $ValueToTest     , $ValueToTestAgainst   , $ResultIfTrue         , $ResultIfFalse    ) }
         
         }
 
         switch ($PSBoundParameters.Keys) {
 
-            "AccountFilter"         { $Rule.SetAccountFilter(           $AccountFilter          ) }     
-            "AccountPropertyFilter" { $Rule.SetAccountPropertyFilter(   $AccountPropertyFilter  ) }  
-            "SortAttribute"         { $Rule.SetSortProperty(            $SortAttribute          ) }
-            "ReturnFirstOnly"       { $Rule.EnableReturnFirstLink(                              ) }
-            "EnableDescendingSort"  { $Rule.EnableDescendingSort(                               ) }
-            "VariableName"          { $Rule.AddVariable(                $VariableName , $VariableTransform) }
-            "DateInputTemplate"     { $Rule.AddInputFormat($DateInputTemplate) }
-            "DateOutputTemplate"    { $Rule.AddOutputFormat($DateOutputTemplate) }
-            "DateInputCustom"       { $Rule.AddInputFormat($DateInputCustom) }
-            "DateOutputCustom"      { $Rule.AddOutputFormat($DateOutputCustom) }
-            "InputTransform"        { $Rule.AddInputTransform($InputTransform) }
-            "FirstDateTransform"    { $Rule.AddFirstDateTransfrom($FirstDateTransform) }
-            "TestAgainstStaticDate" { $Rule.AddSecondDateStaticDate($TestAgainstStaticDate) }
-            "TestForCurrentTime"    { $Rule.SetFirstDateToNow() }
-            "TestAgainstCurrentTime"    { $Rule.SetSecondDatToNow() }
+            "ReturnFirstOnly"           { $Rule.EnableReturnFirstLink(                                                      ) }
+            "EnableDescendingSort"      { $Rule.EnableDescendingSort(                                                       ) }
+            "TestAgainstCurrentTime"    { $Rule.SetSecondDateToNow(                                                         ) }
+            "TestForCurrentTime"        { $Rule.SetFirstDateToNow(                                                          ) }
+            "AccountFilter"             { $Rule.SetAccountFilter(           $AccountFilter                                  ) }     
+            "AccountPropertyFilter"     { $Rule.SetAccountPropertyFilter(   $AccountPropertyFilter                          ) }  
+            "SortAttribute"             { $Rule.SetSortProperty(            $SortAttribute                                  ) }
+            "DateInputTemplate"         { $Rule.AddInputFormat(             $DateInputTemplate                              ) }
+            "DateOutputTemplate"        { $Rule.AddOutputFormat(            $DateOutputTemplate                             ) }
+            "DateInputCustom"           { $Rule.AddInputFormat(             $DateInputCustom                                ) }
+            "DateOutputCustom"          { $Rule.AddOutputFormat(            $DateOutputCustom                               ) }
+            "InputTransform"            { $Rule.AddInputTransform(          $InputTransform                                 ) }
+            "FirstDateTransform"        { $Rule.AddFirstDateTransfrom(      $FirstDateTransform                             ) }
+            "TestAgainstStaticDate"     { $Rule.AddSecondDateStaticDate(    $TestAgainstStaticDate                          ) }
+            "VariableName"              { $Rule.AddVariable(                $VariableName           , $VariableTransform    ) }
             
         }
         
@@ -4299,6 +4690,61 @@ function Get-IdnIdentityProfile                                 {
 
         # Parameter for Profile ID.
         [Parameter(Mandatory = $true,
+        ParameterSetName = "ByID",
+        HelpMessage = "Enter the ID for the Identity Profile.")]
+        [ValidateLength(32,32)]
+        [string]$Id,
+
+        # Parameter for Profile ID.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "BySourceID",
+        HelpMessage = "Enter the ID for the Identity Profile's Authorative Source.")]
+        [ValidateLength(32,32)]
+        [string]$BySourceId,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/identity-profiles/{1}" -f $Tenant.ModernBaseUri , $Id
+        $Uri    = switch ($PSCmdlet.ParameterSetName) {
+
+            "ByID"          { "{0}v3/identity-profiles/{1}"             -f $Tenant.ModernBaseUri , $Id          }
+            "BySourceID"    { "{0}v3/identity-profiles?source-ids={1}"  -f $Tenant.ModernBaseUri , $BySourceId  }
+
+        }
+
+    }
+    
+    process {
+        
+        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+    
+}
+
+function Initialize-IdnIdentityProfileProcessing                {
+    
+    [CmdletBinding()]
+
+    param   (
+
+        # Parameter for Profile ID.
+        [Parameter(Mandatory = $true,
         HelpMessage = "Enter the ID for the Identity Profile.")]
         [ValidateLength(32,32)]
         [string]$Id,
@@ -4314,13 +4760,13 @@ function Get-IdnIdentityProfile                                 {
     begin   {
         
         $Tenant = Get-IdnTenantDetails -Instance $Instance
-        $Uri    = "{0}v3/identity-profiles/{1}" -f $Tenant.ModernBaseUri , $Id
+        $Uri    = "{0}v3/identity-profiles/{1}/process-identities" -f $Tenant.ModernBaseUri , $Id
 
     }
     
     process {
 
-        $Call = Invoke-RestMethod -Method "Get" -Uri $Uri -Headers $Tenant.TenantToken.Bearer
+        $Call = Invoke-WebRequest -Method "Post" -Uri $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json" | Select-Object "StatusCode","StatusDescription"
         
     }
     
@@ -4330,6 +4776,58 @@ function Get-IdnIdentityProfile                                 {
         
     }
     
+}
+
+function Test-IdnIdentityProfile                                {
+
+    [CmdletBinding()]
+    
+    param   (
+
+        # Parameter Transform's Name.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter a IdentityID to test against.")]
+        [ValidateLength( 32 , 32 )]
+        [string]$IdentityID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}v3/identity-profiles/identity-preview" -f $Tenant.ModernBaseUri 
+        
+    }
+    
+    process {
+
+        $Identity   = Get-IdnIdentity           -Id         $IdentityID
+        $IdProfile  = Get-IdnIdentityProfile    -BySourceId $Identity.attributes.cloudAuthoritativeSource
+
+        $Preview = @{
+
+            identityId              = $Identity.id
+            identityAttributeConfig = $IdProfile.identityAttributeConfig
+
+        }
+
+        $RuleConfigAsJson   = ConvertTo-Json    -InputObject    $Preview        -Depth  100
+        $Call               = Invoke-RestMethod -Method         "Post"          -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -Body $RuleConfigAsJson -ContentType "application/json"
+        
+    }
+    
+    end     {
+
+        return $Call
+        
+    }
+
 }
 
 function Get-IdnIdentityProfileIdentityAttributes               {
@@ -4450,6 +4948,132 @@ function Add-IdnIdentityProfileIdentityAttribute                {
     
 }
 
+function New-IdnIdentityProfileIdentityAttributePatch           {
+
+    [CmdletBinding()]
+
+    param   (
+
+        [Parameter( ParameterSetName = 'ReferencePatch'         , Mandatory = $false ) ][Switch]$ReferencePatch          ,
+        [Parameter( ParameterSetName = 'ReferencePatchAdd'      , Mandatory = $false ) ][Switch]$ReferencePatchAdd       ,
+        [Parameter( ParameterSetName = 'ReferencePatchReplace'  , Mandatory = $false ) ][Switch]$ReferencePatchReplace   ,
+        [Parameter( ParameterSetName = 'AccountAttributePatch'  , Mandatory = $false ) ][Switch]$AccountAttributePatch   ,
+        [Parameter( ParameterSetName = 'RulePatch'              , Mandatory = $false ) ][Switch]$RulePatch               ,
+     
+        # Parameter for insert position
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the index of the Idenity Attribute.  For Adds the new attribute will be inserted above the item at this Index.")]
+        [int32]$Index,
+
+        # Parameter for Operation.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Operator for the Identity Attribute Patch.")]
+        [ValidateSet( "add" , "remove" , "replace" , "move" , "copy" , "test" )]
+        [string]$Operator,
+        
+        # Parameter for the Transform Name
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Enter the Identity attribute this is for.")]
+        [string]$IdentityAttribute,
+
+        # Parameter for Source ID
+        [Parameter(ParameterSetName = "AccountAttributePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the Source ID to pull the attribute from.")]
+        [Parameter(ParameterSetName = "ReferencePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the Source ID to pull the attribute from.")]
+        [ValidateLength( 32 ,32  )]
+        [string]$SourceID,
+
+        # Parameter Source Name
+        <# [Parameter(ParameterSetName = "AccountAttributePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the Name of the Source Name.")]
+        [Parameter(ParameterSetName = "ReferencePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the Name of the Source Name.")]
+        [string]$SourceName, #>
+
+        # Parameter Source Attribute
+        [Parameter(ParameterSetName = "AccountAttributePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the Attribute Name to pull from the Source.")]
+        [Parameter(ParameterSetName = "ReferencePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the Attribute Name to pull from the Source.")]
+        [string]$SourceAttribute,
+
+        # Parameter for the Transform Name
+        [Parameter(ParameterSetName = "ReferencePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
+        [Parameter(ParameterSetName = "ReferencePatchReplace",
+        Mandatory = $true,
+        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
+        [string]$TransformRuleToApply,
+
+        # Parameter for Rule ID.
+        [Parameter(ParameterSetName = "RulePatch",
+        Mandatory = $true,
+        HelpMessage = "Enter the ID of the Rule.")]
+        [ValidateLength( 32 ,32  )]
+        [string]$RuleID,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production","Sandbox","Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+
+    begin   {
+
+        $Type   = $PSCmdlet.ParameterSetName
+        $Patch  = New-Object -TypeName $Type
+
+    }
+
+    process {
+
+        switch ($Type) {
+
+            "ReferencePatchReplace" { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute    , $SourceName , $SourceID           , $SourceAttribute  )   }
+            "ReferencePatchAdd"     { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute                                                            )   }
+            "RulePatch"             { 
+            
+                $Rule = Get-IdnRule -RuleId $RuleID
+                $Patch.ProvideRequiredProperties( $Index , $IdentityAttribute     , $RuleID , $Rule.name    )   
+            
+            }
+
+            "AccountAttributePatch" { 
+                
+                $Source = Get-IdnSourcesById -SourceId $SourceID
+                $Patch.ProvideRequiredProperties( $Index , $IdentityAttribute     , $SourceID             , $Source.name , $SourceAttribute                        )   
+            
+            }
+
+            "ReferencePatch"        { 
+                
+                $Source = Get-IdnSourcesById -SourceId $SourceID
+                $Patch.ProvideRequiredProperties( $Operator , $Index , $TransformRuleToApply  , $IdentityAttribute , $Source.name , $SourceID , $SourceAttribute )   
+            
+            }
+        
+        }
+
+    }
+
+    end     {
+
+        return $Patch
+
+    }
+
+}
+
 function Update-IdnIdentityProfileIdentityAttribute             {
     
     [CmdletBinding()]
@@ -4465,7 +5089,7 @@ function Update-IdnIdentityProfileIdentityAttribute             {
         # Paramter for Json Patches
         [Parameter(Mandatory = $true,
         HelpMessage = "Provide at least one Patch Object.")]
-        [ValidateScript({if (($_.GetType().BaseType.Name -eq "IdnIdentityAttributePatchNewLogic")) {$true} else {throw "BaseType is not valid.  Must be IdnIdentityAttributePatchNewLogic"}})]
+        [ValidateScript({if (($_.GetType().BaseType.Name -eq "IdnIdentityAttributePatch")) {$true} else {throw "BaseType is not valid.  Must be IdnIdentityAttributePatchNewLogic"}})]
         [object[]]$Updates,
 
         # Parameter for setting wich instance of SailPoint you are connecting to.
@@ -4485,7 +5109,7 @@ function Update-IdnIdentityProfileIdentityAttribute             {
     
     process {
 
-        foreach ($Patch in $Updates) {$Patch.op = 'replace'}
+        #foreach ($Patch in $Updates) {$Patch.op = 'replace'}
 
         $Body = ConvertTo-Json      -InputObject    $Updates    -Depth  10
         $Call = Invoke-RestMethod   -Method         "Patch"     -Uri    $Uri -Headers $Tenant.TenantToken.Bearer -ContentType "application/json-patch+json" -Body $Body
@@ -5896,7 +6520,7 @@ function Start-IdnConfigExport                                  {
 
             "IncludeTypes"                      { 
                 
-                $Table.excludeTypes += $IncludeTypes 
+                $Table.includeTypes += $IncludeTypes 
             
             }
 
@@ -6396,85 +7020,6 @@ function Get-IdnManagedClientStatus                             {
     end     {
 
         return $Call
-
-    }
-
-}
-
-function Initialize-IdnIdentityAttribute                        {
-
-    [CmdletBinding()]
-
-    param   (
-
-        [Parameter( ParameterSetName = 'ReferencePatch'         , Mandatory = $false )][Switch]$ReferencePatch          ,
-        [Parameter( ParameterSetName = 'ReferencePatchAdd'      , Mandatory = $false )][Switch]$ReferencePatchAdd       ,
-        [Parameter( ParameterSetName = 'ReferencePatchReplace'  , Mandatory = $false )][Switch]$ReferencePatchReplace   ,
-        [Parameter( ParameterSetName = 'AccountAttributePatch'  , Mandatory = $false )][Switch]$AccountAttributePatch   ,
-     
-        # Parameter for insert position
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the index of the Idenity Attribute.  For Adds the new attribute will be inserted above the item at this Index.")]
-        [int32]$Index,
-        
-        # Parameter for the Transform Name
-        [Parameter(Mandatory = $true,
-        HelpMessage = "Enter the Identity attribute this is for.")]
-        [string]$IdentityAttribute,
-
-        # Parameter for Source ID
-        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
-        Mandatory = $true,
-        HelpMessage = "Enter the Source ID to pull the attribute from.")]
-        [string]$SourceLongID,
-
-        # Parameter Source Name
-        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
-        Mandatory = $true,
-        HelpMessage = "Enter the Name of the Source Name.")]
-        [string]$SourceName,
-
-        # Parameter Source Attribute
-        [Parameter(<# ParameterSetName = "AccountAttributePatch", #>
-        Mandatory = $true,
-        HelpMessage = "Enter the Attribute Name to pull from the Source.")]
-        [string]$SourceAttribute,
-
-        # Parameter for the Transform Name
-        [Parameter(ParameterSetName = "ReferencePatch",
-        Mandatory = $true,
-        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
-        [Parameter(ParameterSetName = "ReferencePatchReplace",
-        Mandatory = $true,
-        HelpMessage = "Enter the name of the Transform Rule to Apply.")]
-        [string]$TransformRuleToApply
-
-    )
-
-    begin   {
-
-        $Type   = $PSCmdlet.ParameterSetName
-        $Patch  = New-Object -TypeName $Type
-
-    }
-
-    process {
-
-        switch ($Type) {
-
-            "ReferencePatchAdd"     { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute                                                            )   }
-            "AccountAttributePatch" { $Patch.ProvideRequiredProperties( $Index , $IdentityAttribute     , $SourceLongID         , $SourceName , $SourceAttribute                        )   }
-            "ReferencePatch"        { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute    , $SourceName , $SourceLongID       , $SourceAttribute  )   }
-            "ReferencePatchReplace" { $Patch.ProvideRequiredProperties( $Index , $TransformRuleToApply  , $IdentityAttribute    , $SourceName , $SourceLongID       , $SourceAttribute  )   }
-            Default                 { Write-Warning "$Type has not been configured yet." ; $Patch = $null                                                                                   }
-        
-        }
-
-    }
-
-    end     {
-
-        return $Patch
 
     }
 

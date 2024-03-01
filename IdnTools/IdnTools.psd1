@@ -12,7 +12,7 @@
     RootModule = 'IdnTools.psm1'
 
     # Version number of this module.
-    ModuleVersion = '1.64'
+    ModuleVersion = '1.65'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -71,14 +71,15 @@
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
     FunctionsToExport = @(
 
+        "New-IdnIdentityProfileIdentityAttributePatch"  ,
         "Update-IdnIdentityProfileIdentityAttribute"    ,
         "New-IdnAccessProfileProvisioningCriteria"      ,
         "Get-IdnIdentityProfileIdentityAttributes"      ,
         "Add-IdnIdentityProfileIdentityAttribute"       ,
+        "Initialize-IdnIdentityProfileProcessing"       ,
         "Remove-IdnProvisioningPoliciesForSource"       ,
         "Update-IdnProvisioningPoliciesBySource"        ,
         "Get-IdnSourceAccountAggregationStatus"         ,
-        "Initialize-IdnIdentityAttributePatch"          ,
         "Get-IdnProvisioningPoliciesBySource"           ,
         "Set-IdnProvisioningPoliciesBySource"           ,
         "Update-IdnAccessProfileEntitlments"            ,
@@ -89,12 +90,14 @@
         "Start-IdnEntitlementAggregation"               ,
         "Remove-IdnAccessProfileFromRole"               ,
         "Add-IdnAccessProfileEntitlments"               ,
+        "Set-IdnIdentityLifeCycleState"                 ,
         "Get-IdnRoleMembershipCriteria"                 ,
         "Remove-IdnAccountFromIdentity"                 ,
         "Receive-IdnConfigExportStatus"                 ,
         "Import-IdnSourceEntitlements"                  ,
         "Invoke-IdnAccountAggregation"                  ,
         "Move-IdnAccountToNewIdentity"                  ,
+        "Remove-IdnIdentityAttributes"                  ,
         "Get-IdnIdentityEventHistory"                   ,
         "Set-IdnSourcePasswordPolicy"                   ,
         "Remove-IdnIdentityAttribute"                   ,
@@ -106,13 +109,17 @@
         "Get-IdnManagedClientStatus"                    ,
         "Get-IdnConfigExportStatus"                     ,
         "Get-IdnIdentityAttributes"                     ,
+        "Get-IdnIdentityAdminRoles"                     ,
         "New-IdnConnectionSettings"                     ,
         "Set-IdnIdentityAdminRoles"                     ,
         "Get-IdnIdentityAttribute"                      ,
+        "Set-IdnIdentityAttribute"                      ,
+        "New-IdnIdentityAttribute"                      ,
         "Start-IdnIdentityRefresh"                      ,
         "Import-IdnSourceAccounts"                      ,
         "Update-IdnLifeCycleState"                      ,
         "Get-IdnIdentityProfiles"                       ,
+        "Test-IdnIdentityProfile"                       ,
         "Get-IdnIdentitySnapShot"                       ,
         "Get-IdnPasswordPolicies"                       ,
         "Get-IdnAccountActivity"                        ,
@@ -169,7 +176,6 @@
         "Get-IdnIdentity"                               ,
         "Set-IdnOrgNames"                               ,
         "Reset-IdnSource"                               ,
-        "Set-IdnIdentity"                               ,
         "Get-IdnAccount"                                ,
         "Get-IdnSources"                                ,
         "Set-IdnSource"                                 ,
