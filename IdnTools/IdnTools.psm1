@@ -85,13 +85,15 @@
 
 class IdnPAT                                                    {
     
-    [string         ]$ClientID 
-    [securestring   ]$ClientSecret
+    #[string         ]$ClientID 
+    #[securestring   ]$ClientSecret
+    [pscredential]$ClientCredential
 
     IdnPAT( [string]$ID , [securestring]$Secret ) {
 
-        $this.ClientID      = $ID
-        $this.ClientSecret  = $Secret
+        $this.ClientCredential = New-Object -TypeName "pscredential" -ArgumentList $ID , $Secret
+        #this.ClientID      = $ID
+        #this.ClientSecret  = $Secret
 
     }
 
@@ -149,11 +151,11 @@ class IdnProductionTenant                                       {
 
     RefreshToken(                               ) {
 
-        $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
-        $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
-        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}" -f $this.ModernBaseUri , $this.PAT.ClientID , $Plain
+        #BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
+        #Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
+        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}" #-f $this.ModernBaseUri , $this.PAT.ClientID , $Plain
         $Time   = Get-Date
-        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri 
+        $Call   = Invoke-RestMethod -Method "Post" -Uri ( $Uri -f $this.ModernBaseUri , $this.PAT.ClientCredential.UserName , $this.PAT.ClientCredential.GetNetworkCredential().Password )
         
         if ($Call) {
 
