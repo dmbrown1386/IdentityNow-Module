@@ -85,13 +85,15 @@
 
 class IdnPAT                                                    {
     
-    [string         ]$ClientID 
-    [securestring   ]$ClientSecret
+    #[string         ]$ClientID 
+    #[securestring   ]$ClientSecret
+    [pscredential]$ClientCredential
 
     IdnPAT( [string]$ID , [securestring]$Secret ) {
 
-        $this.ClientID      = $ID
-        $this.ClientSecret  = $Secret
+        $this.ClientCredential = New-Object -TypeName "pscredential" -ArgumentList $ID , $Secret
+        #this.ClientID      = $ID
+        #this.ClientSecret  = $Secret
 
     }
 
@@ -149,11 +151,9 @@ class IdnProductionTenant                                       {
 
     RefreshToken(                               ) {
 
-        $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
-        $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
-        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}" -f $this.ModernBaseUri , $this.PAT.ClientID , $Plain
+        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}"
         $Time   = Get-Date
-        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri 
+        $Call   = Invoke-RestMethod -Method "Post" -Uri ( $Uri -f $this.ModernBaseUri , $this.PAT.ClientCredential.UserName , $this.PAT.ClientCredential.GetNetworkCredential().Password )
         
         if ($Call) {
 
@@ -199,11 +199,9 @@ class IdnAmbassadorTenant                                       {
 
     RefreshToken(                               ) {
 
-        $BSTRID = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR( $this.PAT.ClientSecret  )
-        $Plain  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(    $BSTRID                 )
-        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}" -f $this.ModernBaseUri , $this.PAT.ClientID , $Plain
+        $Uri    = "{0}oauth/token?grant_type=client_credentials&client_id={1}&client_secret={2}"
         $Time   = Get-Date
-        $Call   = Invoke-RestMethod -Method "Post" -Uri $Uri 
+        $Call   = Invoke-RestMethod -Method "Post" -Uri ( $Uri -f $this.ModernBaseUri , $this.PAT.ClientCredential.UserName , $this.PAT.ClientCredential.GetNetworkCredential().Password )
         
         if ($Call) {
 
@@ -7538,6 +7536,111 @@ function Import-IdnSourceEntitlements                           {
     end     {
     
         return $Rest
+
+    }
+
+}
+
+function Import-IdnSourceEntitlementsV3                         {
+
+    [CmdletBinding()]
+    
+    param   (
+    
+        # Parameter for specifying the Id of the source.
+        [Parameter(Mandatory = $true,
+        HelpMessage = "Specify the source's cloud external Id.")]
+        [string]$SourceID,
+        
+        # Parameter for the csv file to post.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "File",
+        HelpMessage = "Provide the path to the CSV to send.")]
+        [ValidateScript( { if ( Test-Path -Path $_ ) { $true } else { throw "Could not find $_.  Enter a valid path and try again." } } )]
+        [string]$CSVPath,
+
+        # Parameter for the csv file to post.
+        [Parameter(Mandatory = $true,
+        ParameterSetName = "Content",
+        HelpMessage = "Provide a CSV object.")]
+        [object]$CSVObject,
+
+        # Parameter for setting wich instance of SailPoint you are connecting to.
+        [Parameter(Mandatory = $false,
+        HelpMessage = "Choose which Tenant to connect to.  Choices are Production, Sandbox or Ambassador")]
+        [ValidateSet("Production" , "Sandbox" , "Ambassador")]
+        [string]$Instance = $IdnApiConnectionConfig.DefaultInstance
+        
+    )
+    
+    begin   {
+        
+        $Tenant = Get-IdnTenantDetails -Instance $Instance
+        $Uri    = "{0}beta/entitlements/aggregate/sources/{1}" -f $Tenant.ModernBaseUri , $SourceID
+        $Header = [System.Net.Http.Headers.ContentDispositionHeaderValue    ]::new( "form-data" )
+        $Form   = [System.Net.Http.MultipartFormDataContent                 ]::new(             )
+        
+    }
+    
+    process {
+
+        $Header.Name = "csvFile"
+
+        switch ( $PSCmdlet.ParameterSetName ) {
+
+            "File"      {
+
+                $File               = Get-Item -Path $CSVPath 
+                $Header.FileName    = $File.Name
+                $FileStream         = [System.IO.FileStream             ]::new( $File.FullName , [System.IO.FileMode]::Open )
+                $Content            = [System.Net.Http.StreamContent    ]::new( $FileStream                                 )
+                $Type               = "multipart/form-data"
+
+            }
+            
+            "Content"   {
+
+                $Content = [System.Net.Http.StringContent]::new( "$CSVObject" )
+                $Type = $Content.Headers.GetValues( "Content-Type" )
+
+            }
+
+        }
+
+        $Content.Headers.ContentDisposition = $Header
+        $Form.Add( $Content )
+
+
+        <# if($isFile) {
+
+            $FileStream = [System.IO.FileStream]::new($value.FullName, [System.IO.FileMode]::Open)
+            $fileHeader = [System.Net.Http.Headers.ContentDispositionHeaderValue]::new("form-data")
+            $fileHeader.Name = "csvFile"
+            $fileHeader.FileName = $value.Name
+            $fileContent = [System.Net.Http.StreamContent]::new($FileStream)
+            $fileContent.Headers.ContentDisposition = $fileHeader
+            $multipartContent.Add($fileContent)
+
+        } 
+        
+        else {
+
+            $stringHeader = [System.Net.Http.Headers.ContentDispositionHeaderValue]::new("form-data")
+            $stringHeader.Name = $_
+            $stringContent.Headers.ContentDisposition = $stringHeader
+            $multipartContent.Add($stringContent)
+
+        } #>
+
+        $Rest = Invoke-RestMethod -Uri $Uri -Headers $Tenant.TenantToken.Bearer -Method "Post" -Body $Content -ContentType "$Type" #-DisableKeepAlive
+    
+    }
+    
+    end     {
+    
+        return $Rest
+
+        if ( $PSCmdlet.ParameterSetName -eq "File" ) { $FileStream.Close() }
 
     }
 
